@@ -122,6 +122,18 @@ function buildMcpServer(pool: Pool, account: AccountView): McpServer {
       threadRootMessageId: z.string().uuid(),
     },
   }, async ({ repo, intentOid, threadRootMessageId }) => {
+    const msg = await pool.query(`select channel_id from message where id = $1`, [threadRootMessageId]);
+    if (!msg.rowCount) {
+      return jsonResult({ error: { code: 'invalid_thread', message: 'thread root message does not exist' } });
+    }
+    const boundChannel = await pool.query(
+      `select id from channel where repo = $1 and kind = 'standard'`, [repo],
+    );
+    if (!boundChannel.rowCount || boundChannel.rows[0].id !== msg.rows[0].channel_id) {
+      return jsonResult({
+        error: { code: 'invalid_thread', message: 'thread root message does not belong to a channel bound to this repo' },
+      });
+    }
     await pool.query(
       `insert into work_thread (repo, intent_oid, thread_root_message_id) values ($1, $2, $3)
        on conflict (repo, intent_oid) do update set thread_root_message_id = excluded.thread_root_message_id`,
