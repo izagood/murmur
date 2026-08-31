@@ -87,11 +87,18 @@ function buildMcpServer(pool: Pool, account: AccountView): McpServer {
     });
     try {
       let result = await fetchUnread();
+      let waited = false;
       if (!result.entries.length && !woken && (timeoutMs ?? 0) > 0) {
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, timeoutMs);
           notify = () => { clearTimeout(timer); resolve(); };
         });
+        waited = true;
+      }
+      // Refetch whenever the first read was empty and either a wake fired (whether during the
+      // initial DB round trip or during the wait) or we sat through the wait — the latter is a
+      // safety net against a wake event that lands in a gap our flag-based tracking still misses.
+      if (!result.entries.length && (woken || waited)) {
         result = await fetchUnread();
       }
       return jsonResult(result);
@@ -129,8 +136,8 @@ export async function registerMcp(app: FastifyInstance, pool: Pool): Promise<voi
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     reply.hijack();
     reply.raw.on('close', () => {
-      void transport.close();
-      void server.close();
+      void transport.close().catch(() => {});
+      void server.close().catch(() => {});
     });
     try {
       await server.connect(transport);
