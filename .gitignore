@@ -1,5 +1,5 @@
-# internal working docs — never committed
-docs/superpowers/
+# internal working docs — never committed (any directory named superpowers)
+superpowers/
 
 node_modules/
 dist/
