@@ -33,8 +33,8 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); await stop(); });
 
 describe('search', () => {
-  it('finds messages by word, excludes deleted, orders by seq desc, and respects limit', async () => {
-    // Test 1: finds messages by word
+  it('finds messages by word, orders by seq desc, and respects limit', async () => {
+    // Test 1: finds messages by word with correct seq desc ordering
     const res = await app.inject({
       method: 'GET', url: '/search?q=pipeline', headers: { authorization: `Bearer ${adminToken}` },
     });
@@ -42,26 +42,31 @@ describe('search', () => {
     const bodies = res.json().messages.map((m: { body: string }) => m.body);
     expect(bodies).toHaveLength(2);
     expect(bodies).toContain('deploy pipeline is green');
+    expect(bodies).toEqual(['pipeline failed again', 'deploy pipeline is green']); // newest first, seq desc
 
-    // Test 2: seq desc ordering
-    const seqs = res.json().messages.map((m: { seq: number }) => m.seq);
-    expect(seqs).toEqual([seqs[0], seqs[1]].sort((a, b) => b - a)); // descending order
-    expect(bodies).toEqual(['pipeline failed again', 'deploy pipeline is green']); // newest first
+    // Test 2: limit parameter works (before soft delete, when 2 messages match)
+    const allResults = await searchMessages(pool, 'pipeline');
+    const limitedResults = await searchMessages(pool, 'pipeline', 1);
+    expect(allResults).toHaveLength(2);
+    expect(limitedResults).toHaveLength(1);
+  });
 
-    // Test 3: deleted messages are excluded
+  it('excludes deleted messages', async () => {
+    // Get a message to delete
+    const res = await app.inject({
+      method: 'GET', url: '/search?q=pipeline', headers: { authorization: `Bearer ${adminToken}` },
+    });
     const pipelineMessages = res.json().messages;
     const messageToDelete = pipelineMessages[0];
+
+    // Soft delete the message
     await pool.query('update message set deleted_at = now() where id = $1', [messageToDelete.id]);
+
+    // Verify deleted message is excluded from search
     const afterDelete = await app.inject({
       method: 'GET', url: '/search?q=pipeline', headers: { authorization: `Bearer ${adminToken}` },
     });
     expect(afterDelete.json().messages).toHaveLength(1);
     expect(afterDelete.json().messages[0].body).toBe('deploy pipeline is green');
-
-    // Test 4: limit parameter works
-    const allResults = await searchMessages(pool, 'pipeline');
-    const limitedResults = await searchMessages(pool, 'pipeline', 1);
-    expect(limitedResults).toHaveLength(1);
-    expect(allResults.length).toBeGreaterThanOrEqual(limitedResults.length);
   });
 });
