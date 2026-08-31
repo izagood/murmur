@@ -4,11 +4,9 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import type { AccountView } from '@murmur/shared';
-import { onEvent } from '../events.js';
-import { listChannels } from '../services/channels.js';
+import { emitEvent, onEvent } from '../events.js';
+import { dmMemberIds, listChannels } from '../services/channels.js';
 import { listInbox, listMessages, postMessage, searchMessages } from '../services/messages.js';
-import { emitEvent } from '../events.js';
-import { dmMemberIds } from '../services/channels.js';
 import { GUIDE } from './guide.js';
 
 function jsonResult(value: unknown) {
@@ -76,19 +74,30 @@ function buildMcpServer(pool: Pool, account: AccountView): McpServer {
          from message where id = any($1) order by seq`, [ids]);
       return { entries, messages: msgs.rows };
     };
-    let result = await fetchUnread();
-    if (!result.entries.length && (timeoutMs ?? 0) > 0) {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => { off(); resolve(); }, timeoutMs);
-        const off = onEvent((e) => {
-          if (e.type === 'inbox.updated' && e.accountId === account.id) {
-            clearTimeout(timer); off(); resolve();
-          }
+    // Subscribe before the first fetch so an inbox.updated arriving during that DB round trip is
+    // not lost in the gap between "query returned empty" and "we started listening" — it sets
+    // `woken`, and we skip the wait and refetch immediately instead of blocking for timeoutMs.
+    let woken = false;
+    let notify: (() => void) | null = null;
+    const off = onEvent((e) => {
+      if (e.type === 'inbox.updated' && e.accountId === account.id) {
+        woken = true;
+        notify?.();
+      }
+    });
+    try {
+      let result = await fetchUnread();
+      if (!result.entries.length && !woken && (timeoutMs ?? 0) > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, timeoutMs);
+          notify = () => { clearTimeout(timer); resolve(); };
         });
-      });
-      result = await fetchUnread();
+        result = await fetchUnread();
+      }
+      return jsonResult(result);
+    } finally {
+      off();
     }
-    return jsonResult(result);
   });
 
   server.registerTool('work.link', {
@@ -119,7 +128,18 @@ export async function registerMcp(app: FastifyInstance, pool: Pool): Promise<voi
     const server = buildMcpServer(pool, req.account);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     reply.hijack();
-    await server.connect(transport);
-    await transport.handleRequest(req.raw, reply.raw, req.body);
+    reply.raw.on('close', () => {
+      void transport.close();
+      void server.close();
+    });
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req.raw, reply.raw, req.body);
+    } catch {
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { 'content-type': 'application/json' });
+        reply.raw.end(JSON.stringify({ error: { code: 'internal', message: 'mcp transport failure' } }));
+      }
+    }
   });
 }
