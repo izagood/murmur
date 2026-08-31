@@ -42,19 +42,16 @@ export async function registerAccountRoutes(app: FastifyInstance, pool: Pool): P
     const client = await pool.connect();
     try {
       await client.query('begin');
-      const existing = await client.query(
-        `select account_id from account_key where key_id = $1 for update`,
-        [body.keyId],
+      const result = await client.query(
+        `insert into account_key (key_id, account_id, public_key_pem) values ($1, $2, $3)
+         on conflict (key_id) do update set public_key_pem = excluded.public_key_pem
+         where account_key.account_id = excluded.account_id`,
+        [body.keyId, id, body.publicKeyPem],
       );
-      if (existing.rowCount && existing.rows[0].account_id !== id) {
+      if (!result.rowCount) {
         await client.query('rollback');
         return reply.code(409).send({ error: { code: 'key_conflict', message: 'key already registered to another account' } });
       }
-      await client.query(
-        `insert into account_key (key_id, account_id, public_key_pem) values ($1, $2, $3)
-         on conflict (key_id) do update set public_key_pem = excluded.public_key_pem`,
-        [body.keyId, id, body.publicKeyPem],
-      );
       await client.query('commit');
       return reply.code(204).send();
     } catch (err) {
