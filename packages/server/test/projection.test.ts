@@ -39,8 +39,10 @@ describe('projection', () => {
     const rows = await messages();
     expect(rows).toHaveLength(2); // intent 1 + 병합된 operation 1
     expect(rows[0].body).toContain('fix bug');
+    expect(rows[0].body).toContain('외부 작업자(k9)'); // 미등록 키 → 외부 작업자 분기
     expect(rows[1].body).toContain('2 operations');
     expect(rows[1].root).not.toBeNull(); // 작업 스레드에 붙음
+    expect(rows[1].meta.oid).toBe('op2'); // 병합 메시지의 대표 oid = 배치 내 마지막 op
 
     const wt = await pool.query(`select 1 from work_thread where repo = $1 and intent_oid = 'i1'`, [REPO]);
     expect(wt.rowCount).toBe(1);
@@ -76,5 +78,20 @@ describe('projection', () => {
     await worker.runOnce(REPO, channelId);
     const after = await pool.query(`select 1 from active_lease where repo = $1`, [REPO]);
     expect(after.rowCount).toBe(0);
+  });
+
+  it('actor label resolves @handle for a registered account_key', async () => {
+    const acct = await pool.query(
+      `insert into account (handle, display_name, kind) values ('alice', 'Alice', 'human') returning id`,
+    );
+    await pool.query(
+      `insert into account_key (key_id, account_id, public_key_pem) values ('k-alice', $1, 'PEM')`,
+      [acct.rows[0].id],
+    );
+    fake.push(REPO, { oid: 'c1', type: 'checkpoint', actorKeyId: 'k-alice', intentOid: null, summary: 'checkpoint cut' });
+    await worker.runOnce(REPO, channelId);
+    const rows = await messages();
+    expect(rows).toHaveLength(5);
+    expect(rows[4].body).toContain('@alice');
   });
 });

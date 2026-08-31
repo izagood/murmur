@@ -27,8 +27,6 @@ async function actorLabel(client: PoolClient, keyId: string | null): Promise<str
   return res.rowCount ? `@${res.rows[0].handle}` : `외부 작업자(${keyId})`;
 }
 
-interface Emitted { channelId: string }
-
 export class ProjectionWorker {
   private running = false;
   private connected = false;
@@ -42,13 +40,24 @@ export class ProjectionWorker {
 
   async runOnce(repo: string, channelId: string): Promise<number> {
     const { pool, avcs, systemAccountId } = this.deps;
+
+    // 아웃바운드 HTTP는 트랜잭션(및 그 안의 pool 커넥션 + row lock) 밖에서 수행한다.
+    // avcs 서버가 느려도 채팅 API용 pool 커넥션을 굶기지 않기 위함.
+    const before = await pool.query(`select last_log_index from projection_cursor where repo = $1`, [repo]);
+    const since: number = before.rowCount ? Number(before.rows[0].last_log_index) : 0;
+    const { entries, next } = await avcs.fetchSince(repo, since);
+    if (!entries.length) return 0;
+
     const client = await pool.connect();
     try {
       await client.query('begin');
       const cur = await client.query(`select last_log_index from projection_cursor where repo = $1 for update`, [repo]);
-      const since: number = cur.rowCount ? Number(cur.rows[0].last_log_index) : 0;
-      const { entries, next } = await avcs.fetchSince(repo, since);
-      if (!entries.length) { await client.query('rollback'); return 0; }
+      const currentSince: number = cur.rowCount ? Number(cur.rows[0].last_log_index) : 0;
+      if (currentSince !== since) {
+        // 다른 실행이 이미 커서를 전진시켰다 — 이번 배치는 폐기하고 다음 폴에서 새 since로 재조회한다.
+        await client.query('rollback');
+        return 0;
+      }
 
       const emitted: { message: import('@murmur/shared').MessageRow }[] = [];
       let leaseChanged = false;
