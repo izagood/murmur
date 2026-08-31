@@ -27,9 +27,17 @@ export async function registerWs(app: FastifyInstance, pool: Pool): Promise<void
   await app.register(websocket);
 
   app.get('/ws', { websocket: true }, async (socket, req) => {
+    // Registered before the auth await so a disconnect during resolveAccountId is observed even
+    // though it arrives before we'd otherwise attach the real cleanup listener below — closing the
+    // race where a client disconnects mid-auth, leaving a subscription (or a close(4401) on an
+    // already-dead socket) with nothing left to ever unsubscribe it.
+    let closedDuringAuth = false;
+    socket.on('close', () => { closedDuringAuth = true; });
+
     const token = (req.query as Record<string, string>).token;
     const accountId = token ? await resolveAccountId(pool, token) : null;
-    if (!accountId) { socket.close(4401, 'unauthorized'); return; }
+    if (!accountId) { if (!closedDuringAuth) socket.close(4401, 'unauthorized'); return; }
+    if (closedDuringAuth) return; // client vanished mid-auth; never subscribed, nothing to clean up
 
     const off = onEvent((e) => {
       if (visibleTo(e, accountId)) socket.send(JSON.stringify(e));
