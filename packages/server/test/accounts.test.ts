@@ -62,4 +62,34 @@ describe('agents', () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it('key conflict: cross-account keyId theft prevented, self-update allowed', async () => {
+    const { accountId: accA, pat: patA } = await createAgent(app, adminToken, 'bot4');
+    const { accountId: accB, pat: patB } = await createAgent(app, adminToken, 'bot5');
+
+    // Account A registers keyId k2
+    const regA = await app.inject({
+      method: 'PUT', url: `/accounts/${accA}/keys`,
+      headers: { authorization: `Bearer ${patA}` },
+      payload: { keyId: 'k2', publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMCow...\n-----END PUBLIC KEY-----' },
+    });
+    expect(regA.statusCode).toBe(204);
+
+    // Account B tries to steal k2 → 409
+    const steal = await app.inject({
+      method: 'PUT', url: `/accounts/${accB}/keys`,
+      headers: { authorization: `Bearer ${patB}` },
+      payload: { keyId: 'k2', publicKeyPem: '-----BEGIN PUBLIC KEY-----\nOther...\n-----END PUBLIC KEY-----' },
+    });
+    expect(steal.statusCode).toBe(409);
+    expect(steal.json()).toMatchObject({ error: { code: 'key_conflict' } });
+
+    // Account A re-registers k2 (update) → 204
+    const reupdate = await app.inject({
+      method: 'PUT', url: `/accounts/${accA}/keys`,
+      headers: { authorization: `Bearer ${patA}` },
+      payload: { keyId: 'k2', publicKeyPem: '-----BEGIN PUBLIC KEY-----\nUpdated...\n-----END PUBLIC KEY-----' },
+    });
+    expect(reupdate.statusCode).toBe(204);
+  });
 });
