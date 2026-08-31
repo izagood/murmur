@@ -31,6 +31,7 @@ export async function startFakeAvcs(): Promise<{
         if (current.length > since) { clearTimeout(timer); waiters.delete(wake); answer(); }
       };
       waiters.add(wake);
+      req.on('close', () => { clearTimeout(timer); waiters.delete(wake); });
       return;
     }
     res.statusCode = 404;

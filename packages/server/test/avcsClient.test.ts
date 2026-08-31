@@ -23,4 +23,12 @@ describe('avcs client', () => {
     expect(await client.waitForChange('r1', 0, 1000)).toBe(true);
     expect(await client.waitForChange('r1', 99, 300)).toBe(false);
   });
+
+  it('waitForChange wakes when push arrives during long-poll', async () => {
+    const client = httpAvcsClient(fake.url);
+    const promise = client.waitForChange('r2', 0, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    fake.push('r2', { oid: 'oid-c', type: 'intent', actorKeyId: 'k1', intentOid: 'oid-c', summary: 'test' });
+    expect(await promise).toBe(true);
+  });
 });
