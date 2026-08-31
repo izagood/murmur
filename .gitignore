@@ -1,0 +1,10 @@
+# internal working docs — never committed
+docs/superpowers/
+
+node_modules/
+dist/
+target/
+.env
+.env.*
+*.log
+.DS_Store
