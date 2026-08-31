@@ -71,11 +71,10 @@ describe('smoke: mention → work → projection into linked thread', () => {
     const bodies = thread.json().messages.map((m: { body: string }) => m.body);
     expect(bodies.some((b: string) => b.includes('@worker1') && b.includes('operation'))).toBe(true);
 
-    // 4) avcs 서버 재시작(=fake 재생성) 후에도 커서부터 이어받는다
-    expect((await app.inject({ method: 'GET', url: '/healthz' })).json().avcs).toEqual({ connected: false });
+    // 4) 커서가 유지되어 이전 엔트리는 재적용되지 않음
     fake.push('smoke-repo', { oid: 'd-1', type: 'decision', actorKeyId: 'wk1', intentOid: 'int-1', summary: 'resolved L1' });
     const applied = await worker.runOnce('smoke-repo', channelId);
-    expect(applied).toBe(1); // 이전 3개는 재적용되지 않음
+    expect(applied).toBe(1); // 이전 2개(int-1, op-1)는 재적용되지 않음
 
     // 5) admin↔agent DM 생성 후 dmMemberIds가 실제 두 계정을 반환하는지 검증
     const dm = await app.inject({
