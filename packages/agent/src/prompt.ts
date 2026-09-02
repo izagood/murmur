@@ -14,14 +14,24 @@ export const BODY_LIMIT = 8000;
 /** 답을 올리지 않고 프로세스가 끝났을 때 러너가 에이전트 계정으로 스레드에 남기는 문구(spec §4 발화 경로). */
 export const NO_REPLY_NOTICE = '(답 없이 턴을 끝냈습니다 — 프로세스는 정상 종료, 발화 없음)';
 
-/**
- * 임계 시간을 넘겨도 턴이 아직 돌고 있을 때 **러너가** 올리는 진행 통지(#123).
+/** #123: 임계 시간을 넘겨도 턴이 아직 돌고 있을 때 **러너가** 올리는 진행 통지.
  * 에이전트가 올리는 것이 아니다 — 러너가 올려야 자기 seq 를 알아 발화 판정에서 뺄 수 있다.
- */
+ *
+ * #144 (코멘트): 이 고정 문구는 사용자가 이미 아는 것만 말한다 — 스레드 슬롯을 쓰면서 정보를 0 만큼 준다.
+ * 반면 "avcs intent 를 만들고 merge3 결함 재현 테스트부터 붙인다 — 서너 턴 걸린다"는 같은 슬롯으로
+ * 사용자가 기다릴지 끊을지 판단할 근거를 준다. 그래서 에이전트가 직접 `message.progress` MCP 도구로
+ * 진행 설명을 올리며, 이 상수는 더 이상 쓰이지 않는다 — 남겨두면 나중에 지우는 걸 깜빡할 수 있으니
+ * 코멘트만 남겨둔다.
+ *
+ * @deprecated #144에서 에이전트가 직접 progress 메서드로 진행 설명을 올리므로 더 이상 사용하지 않음.
+ * 단 에이전트가 진행 설명을 안 올린 경우를 위해 ACK_NOTICE_PHRASE_PHRASE 은 남겨둔다. */
 export const ACK_NOTICE = '(작업 진행 중 — 결과를 내고 있습니다)';
 
 /** MAX_ATTEMPTS 를 소진했을 때 채널에 남기는 통지문구(#82). */
 export const FAILURE_NOTICE = '(답변에 실패했습니다 — 운영자 확인이 필요합니다)';
+
+/** 진행 설명이 담긴 progress 메시지의 kind 값. */
+export const MESSAGE_KIND_PROGRESS = 'progress';
 
 /**
  * 매 턴 `--append-system-prompt` 로 하네스에 주입되는 시스템 프롬프트. 프로세스가 턴마다
@@ -58,8 +68,15 @@ export function buildSystemPrompt(opts: {
     // 그래서 이 문장이 유일한 예방이고, 위반은 턴 후 개수를 세어 러너 로그에 남긴다.
     '한 턴에 한 번만 발화한다 — 답이 길어도 나눠 올리지 않고 한 번에 정리해서 올린다.',
     '',
-    // #123: 러너가 먼저 ack 를 보낼 수 있다. 에이전트는 여전히 결과를 한 번만 올리면 된다.
-    '긴 작업인 경우 러너가 먼저 "진행 중" 통지를 보낼 수 있다 — 그 경우에도 결과는 내가 한 번만 올리면 된다.',
+    // #144: 긴 작업 시작 시 진행 설명 — message.progress MCP 도구로 올린다.
+    // 이것은 결과 발화로 세지 않으며, 사용자가 읽을 수 있어야 뜻이 있다.
+    // 진행 설명 예시: "avcs intent 를 만들고 merge3 결함 재현 테스트부터 붙인다 — 서너 턴 걸린다"
+    '긴 작업을 시작할 때는 먼저 `message.progress` MCP 도구로 짧게 무슨 작업인지 설명하고 들어간다. ',
+    '이 진행 설명은 결과 발화로 세지 않으며, 사용자가 기다릴지 끊을지 판단할 근거를 준다.',
+    '',
+    // #123 (legacy): 이 문구는 더 이상 사용하지 않음 — #144에서 에이전트가 직접 progress 메서드로
+    // 진행 설명을 올리므로. 남겨두면 나중에 지우는 걸 깜빡할 수 있으니 코멘트만 남겨둔다.
+    // '긴 작업인 경우 러너가 먼저 "진행 중" 통지를 보낼 수 있다 — 그 경우에도 결과는 내가 한 번만 올리면 된다.',
     '',
     `답변은 ${BODY_LIMIT}자를 넘길 수 없다(서버가 거절한다). 채팅이므로 짧고 구체적으로 쓴다.`,
     '모르는 것은 모른다고 말한다. 확인하지 않은 것을 확인한 것처럼 쓰지 않는다.',
@@ -136,18 +153,28 @@ export function buildTurnPrompt(opts: {
  * NO_REPLY_NOTICE 와 커서 전진 판단)와 "여러 번 발화했나"(> 1, 중복 발화 관측). 불리언만
  * 두면 후자를 알 수 없고, 두 함수가 각자 세면 규칙이 둘로 갈린다. 세는 곳은 여기 하나다.
  *
- * #123: `excludeSeqs` 는 **러너가 직접 올린 메시지**(진행 통지)를 빼기 위한 것이다.
- * 그래야 "ack 만 있고 본답이 없다"가 침묵으로 취급되어 NO_REPLY_NOTICE 가 정상 발화하고,
- * warnOnDuplicatePosts 도 정상 동작을 위반으로 세지 않는다.
+ * #144: `excludeProgress` 가 progress 메시지를 제외한다. 에이전트가 `message.progress` 로 올린
+ * 진행 설명은 결과 발화로 세지 않으며, 사용자가 읽을 수 있어야 뜻이 있다.
+ *
+ * #123 (legacy): `excludeSeqs` 는 **러너가 직접 올린 메시지**(진행 통지)를 빼기 위한 것.
+ * #144 에서 에이전트가 직접 progress 메시지를 올리므로 excludeSeqs 는 더 이상 필요 없지만,
+ * 하위 호환성을 위해 남겨둔다 — 다만 이제 excludeProgress=true 가 기본이므로 progress 메시지도 제외된다.
  */
-export function countOwnPostsSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[]): number {
-  return messages.filter((m) => m.authorId === meId && m.seq > sinceSeq && !(excludeSeqs?.includes(m.seq))).length;
+export function countOwnPostsSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[], excludeProgress = true): number {
+  return messages.filter((m) => 
+    m.authorId === meId && 
+    m.seq > sinceSeq && 
+    !(excludeSeqs?.includes(m.seq)) && 
+    !(excludeProgress && m.kind === MESSAGE_KIND_PROGRESS)
+  ).length;
 }
 
 /**
- * "이 턴에 발화가 있었나". `countOwnPostsSince` 위에 얹은 얇은 판정이다 — 세는 규칙이
+ * "이 턴에 결과 발화가 있었나". `countOwnPostsSince` 위에 얹은 얇은 판정이다 — 세는 규칙이
  * 두 곳에 생기지 않게 한다. 실패 경로(커서를 전진시킬지 정하는 자리)가 이 불리언을 쓴다.
+ *
+ * #144: progress 메시지는 제외되므로, 진행 설명만 있고 결과가 없는 턴은 NO_REPLY_NOTICE 를 표시한다.
  */
-export function hasOwnPostSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[]): boolean {
-  return countOwnPostsSince(messages, meId, sinceSeq, excludeSeqs) > 0;
+export function hasOwnPostSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[], excludeProgress = true): boolean {
+  return countOwnPostsSince(messages, meId, sinceSeq, excludeSeqs, excludeProgress) > 0;
 }
