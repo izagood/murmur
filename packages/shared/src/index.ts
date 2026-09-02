@@ -55,6 +55,8 @@ export interface AgentConfig {
 export interface AgentView extends AccountView, AgentConfig {
   /** 러너 소유자. null 이면 attach 표면이 아무에게도 안 뜬다. */
   ownerAccountId: string | null;
+  /** 이 에이전트에 붙어 있는 러너의 빌드 버전. null 은 아직 한 번도 접속한 적이 없거나 버전 정보를 보내지 않은 것이다. */
+  runnerVersion: string | null;
 }
 
 export interface PatView {

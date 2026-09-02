@@ -1,0 +1,1 @@
+export const VERSION = process.env.AGENT_VERSION ?? 'unknown';
