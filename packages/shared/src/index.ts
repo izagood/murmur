@@ -50,14 +50,18 @@ export interface AgentConfig {
   effort: string | null;
   workingDir: string | null;
   mentionPermission: MentionPermission;
-}
-
-export interface AgentView extends AccountView, AgentConfig {
-  /** 러너 소유자. null 이면 attach 표면이 아무에게도 안 뜬다. */
+  /**
+   * 러너 소유자. **null 이면 attach 표면이 아무에게도 안 뜬다.**
+   *
+   * 여기(설정)에 있는 이유: 서버의 `configFields` 가 생성·수정에 같은 목록을 쓰고 그
+   * 목록에 이 필드가 들어 있다. 클라이언트 타입이 그 계약을 그대로 반영한다.
+   */
   ownerAccountId: string | null;
   /** 이 에이전트에 붙어 있는 러너의 빌드 버전. null 은 아직 한 번도 접속한 적이 없거나 버전 정보를 보내지 않은 것이다. */
   runnerVersion: string | null;
 }
+
+export interface AgentView extends AccountView, AgentConfig {}
 
 export interface PatView {
   label: string;
@@ -156,6 +160,13 @@ export interface InboxEntry {
 export interface DmView {
   id: string;
   memberIds: string[];
+}
+
+export interface ChannelPrefRow {
+  accountId: string;
+  channelId: string;
+  mutedAt: string | null;
+  starredAt: string | null;
 }
 
 export interface LeaseRow {
