@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { draftsStorage } from '../lib/prefs';
 import type { AccountView, ChannelRow, ChannelPrefRow, DmView, InboxEntry, LeaseRow, MessageRow } from '@murmur/shared';
 
 export interface AppState {
@@ -38,6 +39,8 @@ export interface AppState {
   reset(): void;
   clearDrafts(): void;
   setDraft(scopeKey: string, draft: string): void;
+  /** 기동 시 보관소에서 초안을 읽어 온다. */
+  hydrateDrafts(): void;
 }
 
 const initial = {
@@ -85,13 +88,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ messages: { ...get().messages, [channelId]: rows.filter((m) => m.id !== messageId) } });
   },
   reset: () => set({ ...initial }),
-  clearDrafts: () => set({ drafts: {} }),
+  clearDrafts: () => { set({ drafts: {} }); draftsStorage.clear(); },
+  /**
+   * 스토어가 초안의 **단일 원천**이다. 영속도 여기서 한다 — 컴포저가 지역 state 와
+   * 보관소를 각각 들면 진실이 둘이 되고, 실제로 초판이 그랬다(스토어 쪽은 아무도
+   * 쓰지 않는 죽은 코드였고 로그아웃이 그쪽을 비우지 않았다).
+   *
+   * 맵이 이미 메모리에 있으므로 키 입력마다 보관소를 **읽지** 않는다. 초판은 매
+   * 글자마다 load() 로 JSON 을 파싱했다 — murmur 메시지는 길다는 것이 이 기능의
+   * 전제인데 그 전제와 정면으로 어긋난다.
+   */
   setDraft: (scopeKey, draft) => {
-    if (!draft) {
-      const { [scopeKey]: _, ...rest } = get().drafts;
-      set({ drafts: rest });
-    } else {
-      set({ drafts: { ...get().drafts, [scopeKey]: draft } });
-    }
+    const next = { ...get().drafts };
+    if (draft) next[scopeKey] = draft;
+    else delete next[scopeKey];
+    set({ drafts: next });
+    draftsStorage.save(next);
   },
+  hydrateDrafts: () => set({ drafts: draftsStorage.load() }),
 }));

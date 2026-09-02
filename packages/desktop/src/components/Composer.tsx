@@ -6,7 +6,6 @@ import { formatSize } from './Attachments';
 import {
   mentionQueryAt, applyMention, withStickyMentions, keepMentioned, type MentionQuery,
 } from '../lib/mention';
-import { draftsStorage } from '../lib/prefs';
 
 /** 목록이 화면을 덮지 않을 만큼만 보여준다. 더 좁히는 것은 사용자가 글자를 더 치는 일이다. */
 const MAX_SUGGESTIONS = 8;
@@ -42,7 +41,6 @@ interface Props {
 export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = '' }: Props) {
   const accounts = useAppStore((s) => s.accounts);
   const myId = useAppStore((s) => s.me?.id);
-  const [draft, setDraftLocal] = useState('');
   const [query, setQuery] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
   const [stickyByScope, setStickyByScope] = useState<Record<string, string[]>>({});
@@ -59,43 +57,26 @@ export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = 
   const pendingCaret = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const prevScopeKey = useRef(scopeKey);
-  const initialLoadDone = useRef(false);
 
-  // 첫 렌더링 때만 localStorage 에서 초안을 불러온다 — 이후는 state 로 관리.
+  // 초안은 **스코프 키로 스토어에 산다.** 지역 state 로 두면 컴포넌트 인스턴스가 채널
+  // 전환에도 유지되기 때문에(ChannelPane 이 같은 자리에 렌더한다) A 에 쓴 글이 B 입력창에
+  // 남고 B 로 나간다 — 그게 #184 다. 스토어가 영속까지 책임진다.
+  const draft = useAppStore((s) => s.drafts[scopeKey] ?? '');
+  const setDraftLocal = (next: string | ((current: string) => string)): void => {
+    const store = useAppStore.getState();
+    const current = store.drafts[scopeKey] ?? '';
+    store.setDraft(scopeKey, typeof next === 'function' ? next(current) : next);
+  };
+
+  // #142 의 잔여 증상: 스코프가 바뀌면 자동완성 목록을 닫는다. 초안과 달리 **복원하지
+  // 않는다** — 채널을 옮긴 직후에 남의 후보 목록이 떠 있으면 안 된다.
   useEffect(() => {
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      const loaded = draftsStorage.load();
-      if (loaded[scopeKey]) {
-        setDraftLocal(loaded[scopeKey]);
-      }
-    }
+    if (prevScopeKey.current === scopeKey) return;
+    prevScopeKey.current = scopeKey;
+    setQuery(null);
+    setPicking(false);
+    setActive(0);
   }, [scopeKey]);
-
-  // scopeKey 가 바뀔 때마다 초안을 새로 불러오고, 자동완성 목록을 닫는다(#142).
-  // 스코프별 보관이며 picking/query 는 복원하지 않는다 — 남의 채널의 후보 목록이 떠 있으면 안 된다.
-  useEffect(() => {
-    if (!initialLoadDone.current) return;
-    if (prevScopeKey.current !== scopeKey) {
-      prevScopeKey.current = scopeKey;
-      const loaded = draftsStorage.load();
-      setDraftLocal(loaded[scopeKey] ?? '');
-      setQuery(null);
-      setPicking(false);
-      setActive(0);
-    }
-  }, [scopeKey]);
-
-  // 초안이 바뀔 때마다 기기 로컬에 영속한다.
-  useEffect(() => {
-    const current = draftsStorage.load();
-    if (draft) {
-      current[scopeKey] = draft;
-    } else {
-      delete current[scopeKey];
-    }
-    draftsStorage.save(current);
-  }, [draft, scopeKey]);
 
   const matches = useMemo(() => {
     if (!query) return [];

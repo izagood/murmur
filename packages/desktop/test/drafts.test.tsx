@@ -119,25 +119,35 @@ describe('초안 보관', () => {
     const onSend = vi.fn();
     
     localStorage.setItem('murmur.drafts', JSON.stringify({ 'channel-A': 'persisted draft' }));
-    
+
+    // 보관소 읽기는 **앱 기동 시점**이다(controller.start 가 부른다) — 컴포저가 보관소를
+    // 직접 뒤지지 않는다. 그래서 재시작을 흉내내려면 하이드레이션을 명시적으로 부른다.
+    useAppStore.getState().hydrateDrafts();
     render(<Composer onSend={onSend} scopeKey="channel-A" />);
-    
+
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('persisted draft');
   });
 
   it('로그아웃하면 보관된 초안이 전부 사라진다', async () => {
     const onSend = vi.fn();
     
-    localStorage.setItem('murmur.drafts', JSON.stringify({ 
+    localStorage.setItem('murmur.drafts', JSON.stringify({
       'channel-A': 'draft A',
       'channel-B': 'draft B',
-      'thread:123': 'thread draft'
+      'thread:123': 'thread draft',
     }));
-    
-    draftsStorage.clear();
-    
-    const current = draftsStorage.load();
-    expect(Object.keys(current)).toHaveLength(0);
+    useAppStore.getState().hydrateDrafts();
+    expect(Object.keys(useAppStore.getState().drafts)).toHaveLength(3);
+
+    // 로그아웃이 실제로 부르는 경로(appStore.clearDrafts)를 탄다. 초판은
+    // draftsStorage.clear() 를 직접 불러 **헬퍼가 동작하는지만** 봤고, 로그아웃이 그것을
+    // 부르는지는 검사하지 않았다 — 보안 결정이 정확히 그 틈에 있었다.
+    useAppStore.getState().clearDrafts();
+
+    // 인메모리와 보관소 **둘 다** 비어야 한다. 보관소만 지우면 스토어에 문장이 남고,
+    // 스토어만 지우면 다음 기동에 되살아난다.
+    expect(Object.keys(useAppStore.getState().drafts)).toHaveLength(0);
+    expect(localStorage.getItem('murmur.drafts')).toBeNull();
   });
 
   it('채널을 바꾸면 멘션 자동완성 목록이 닫힌다', async () => {
