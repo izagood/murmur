@@ -260,7 +260,7 @@ export async function runMentionTurn(deps: MentionTurnDeps, target: MentionTarge
 
   // #117: 대화 본문도 stdin 파일로 이동한다. argv 에 있으면 같은 머신의 다른 로컬 사용자가
   // `ps -ef` 로 스레드 내용을 그대로 읽는다. codex 는 지시문까지 합쳐서 stdin 으로 가고,
-  // claude 는 지시문이 이미 systemPromptFile 로别도로 가므로 여기선 promptCtx 만 stdin 으로 간다.
+  // claude 는 지시문이 이미 systemPromptFile 로 별도로 가므로 여기선 promptCtx 만 stdin 으로 간다.
   let stdinFile: string | null = null;
   if (def.harness === 'codex') {
     // codex: 지시문 + 본문 합쳐서 stdin 으로

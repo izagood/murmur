@@ -797,7 +797,7 @@ describe('runMentionTurn', () => {
     // 영영 안 먹힌다. since 커서로 읽으면 창이 델타의 '앞쪽'을 잡으므로 건너뛰지 않는다.
     //
     // #117 수정: 이 테스트는 prompt content 가 stdin 파일로 이동하면서 same content 를
-    // 포함해야 한다. fake.limit=3 이して 3 개만 표시되므로, limit 를 높여서 모두 확인한다.
+    // 포함해야 한다. fake.limit=3 이라 3 개만 표시되므로, limit 를 높여서 모두 확인한다.
     it('커서가 생긴 뒤에는 창보다 많이 쌓여도 건너뛰는 메시지가 없다', async () => {
       const fake = new FakeMurmur(defOf());
       fake.limit = 10; // #117: limit 를 높여 모든 메시지가 포함되도록 한다

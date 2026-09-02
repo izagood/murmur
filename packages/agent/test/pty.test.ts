@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RingBuffer, runPtyTurn } from '../src/pty.js';
+import { composeSpawn, RingBuffer, runPtyTurn } from '../src/pty.js';
 
 const fake = join(dirname(fileURLToPath(import.meta.url)), 'helpers/fake-harness.mjs');
 // **부모 env 를 펼치지 않는다 — 프로덕션 plan 의 실제 모양과 같아야 한다.** 예전엔
@@ -205,21 +205,6 @@ describe('runPtyTurn — stdin 파일 리다이렉션(#117)', () => {
     expect(r.tail).toContain('stdin-received: Hello from stdin');
   });
 
-  // sh -c 문자열에 exec 가 있어야 한다 — 없으면 최종 프로세스가 sh 가 되어 시그널이
-  // 하네스에 닿지 않는다(test/helpers/fake-harness.mjs 의 hang-ignore-sigterm 경로가
-  // 이것에 의존한다).
-  it('sh -c 문자열에 exec 가 있다', async () => {
-    const stdinFile = join(dir, 'prompt.txt');
-    await writeFile(stdinFile, 'test', { encoding: 'utf8' });
-    const p = { command: process.execPath, args: [fake], env: { FAKE_MODE: 'stdin-echo' } as Record<string, string>, stdinFile };
-    // 이 테스트는 internals 를 직접 확인한다 — pty.ts 의 구현이 'exec ' 로 시작하는지를 본다.
-    // 실제로 exec 가 없으면 시그널이 sh 로 가서 테스트가 실패한다(hang-ignore-sigterm 이
-    // 실행되지 않음). 이 테스트는 구현 문자열을 확인해서 exec 가 있음을 보장한다.
-    const r = await runPtyTurn(p, { cwd: process.cwd(), timeoutMs: 10_000 });
-    // exec 가 없으면 위 테스트가 타임아웃으로 실패한다 — 여기 도달하면 exec 가 있다는 뜻.
-    expect(r.exitCode).toBe(0);
-  });
-
   // 공백이 포함된 경로·인자가 셸 인용을 통과한다.
   it('공백 포함 경로가 셸 인용을 통과한다', async () => {
     const stdinFile = join(dir, 'prompt with spaces.txt');
@@ -229,7 +214,51 @@ describe('runPtyTurn — stdin 파일 리다이렉션(#117)', () => {
     expect(r.exitCode).toBe(0);
     expect(r.tail).toContain('test content');
   });
+});
 
-  // stdin 파일이 없다면 (fake-harness.mjs 가 읽을 때) 오류가 나지만 여기서는
-  // 파일을 먼저 쓰고 실행하므로 이 테스트는 통과한다.
+// composeSpawn 은 순수 함수라 조립된 문자열을 직접 단정할 수 있다. runPtyTurn 안에
+// 갇혀 있었을 때는 테스트가 "종료 코드가 0이다" 로 갈음했고, 그건 exec 가 없어도
+// 통과했다 — 아무것도 지키지 않는 테스트였다.
+describe('composeSpawn — sh -c 조립(#117)', () => {
+  const base = { command: '/bin/harness', args: ['-p', 'x'], env: {} as Record<string, string> };
+
+  it('stdinFile 이 null 이면 감싸지 않는다', () => {
+    const r = composeSpawn({ ...base, stdinFile: null });
+    expect(r.command).toBe('/bin/harness');
+    expect(r.args).toEqual(['-p', 'x']);
+  });
+
+  // exec 가 없으면 최종 프로세스가 sh 가 되어 시그널이 하네스에 닿지 않는다.
+  it('exec 로 시작한다', () => {
+    const r = composeSpawn({ ...base, stdinFile: '/tmp/p.txt' });
+    expect(r.command).toBe('sh');
+    expect(r.args[0]).toBe('-c');
+    expect(r.args[1]!.startsWith('exec ')).toBe(true);
+  });
+
+  it('명령·인자·파일 경로를 모두 인용한다', () => {
+    const r = composeSpawn({
+      command: '/opt/my bin/harness', args: ['--flag', 'two words'], env: {},
+      stdinFile: '/tmp/prompt with spaces.txt',
+    });
+    expect(r.args[1]).toBe(
+      "exec '/opt/my bin/harness' '--flag' 'two words' < '/tmp/prompt with spaces.txt'",
+    );
+  });
+
+  // 단일 인용부호가 든 값에서 셸 인용이 깨지면 임의 명령이 실행될 수 있다.
+  it('단일 인용부호를 전치한다', () => {
+    const r = composeSpawn({ ...base, args: ["it's"], stdinFile: '/tmp/p.txt' });
+    // String.raw 로 쓴다 — 백슬래시와 인용부호가 섞이면 JS 이스케이프가 기대값을
+    // 조용히 바꾼다(실제로 한 번 그렇게 틀렸다).
+    expect(r.args[1]).toContain(String.raw`'it'\''s'`);
+  });
+
+  // 대화 본문이 argv 로 새지 않는다는 것이 이 이슈의 요구다 — 조립된 문자열에도
+  // 본문이 없어야 하고, 경로만 있어야 한다.
+  it('조립된 문자열에 파일 경로만 있고 본문은 없다', () => {
+    const r = composeSpawn({ ...base, stdinFile: '/tmp/p.txt' });
+    expect(r.args[1]).toContain('/tmp/p.txt');
+    expect(r.args[1]).not.toContain('사람이 쓴 대화 본문');
+  });
 });
