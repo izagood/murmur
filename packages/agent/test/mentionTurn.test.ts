@@ -50,6 +50,8 @@ class FakeMurmur implements MentionTurnMurmur {
   /** 프로덕션 클라이언트(`murmur.ts::readThread`)의 기본값은 30 이다. 테스트는 창 밖으로
    *  밀려나는 상황을 작은 수로 만들기 위해 이 값을 낮춘다. */
   limit = 30;
+  /** 리액션 호출 기록 */
+  reactions: { channelId: string; messageId: string; emoji: string; action: 'add' | 'remove' }[] = [];
 
   constructor(def: AgentView) {
     this.def = def;
@@ -83,6 +85,16 @@ class FakeMurmur implements MentionTurnMurmur {
     return Promise.resolve(m.seq);
   }
 
+  addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+    this.reactions.push({ channelId, messageId, emoji, action: 'add' });
+    return Promise.resolve();
+  }
+
+  removeReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+    this.reactions.push({ channelId, messageId, emoji, action: 'remove' });
+    return Promise.resolve();
+  }
+
   /** 사람/동료 에이전트의 메시지를 스레드에 심는다. seq 는 이 fake 가 채번한다. */
   seedFrom(authorId: string, body: string, threadRootId: string | null = null): MessageRow {
     this.seq += 1;
@@ -94,6 +106,7 @@ class FakeMurmur implements MentionTurnMurmur {
   /** 테스트용: 호출 기록 초기화 */
   clearCalls(): void {
     this.readThreadCalls = [];
+    this.reactions = [];
   }
 }
 
@@ -1083,6 +1096,126 @@ describe('runMentionTurn', () => {
       );
       logSpy.mockRestore();
     });
+  });
+});
+
+// 👀 💬 리액션 신호 회귀 테스트
+describe('리액션 신호 (👀 💬)', () => {
+  it('👀 가 runTurn 호출 전에 걸린다 (순서 검증)', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mentionMsg = fake.seedFrom('human-1', '@forge 안녕');
+    mentionMsg.threadRootId = mentionMsg.id; // 채널 최상위 멘션을 스레드로 만든다
+    const { deps, runTurn } = await makeDeps(fake);
+
+    let turnCalled = false;
+    runTurn.script = async () => {
+      turnCalled = true;
+      // runTurn 이 불린 시점에 👀 가 이미 추가돼 있어야 한다
+      const eyesReaction = fake.reactions.find(
+        (r) => r.messageId === mentionMsg.id && r.emoji === '👀' && r.action === 'add',
+      );
+      expect(eyesReaction).toBeDefined();
+      return { exitCode: 0, timedOut: false, tail: '' };
+    };
+
+    await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mentionMsg.id, mentionId: mentionMsg.id });
+
+    expect(turnCalled).toBe(true);
+  });
+
+  it('💬 가 턴 시작 시 걸리고 턴 종료 후 제거된다', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mentionMsg = fake.seedFrom('human-1', '@forge 안녕');
+    mentionMsg.threadRootId = mentionMsg.id;
+    const { deps, runTurn } = await makeDeps(fake);
+
+    await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mentionMsg.id, mentionId: mentionMsg.id });
+
+    // 💬 가 add 되고 remove 된다
+    const speakingAdd = fake.reactions.filter(
+      (r) => r.messageId === mentionMsg.id && r.emoji === '💬' && r.action === 'add',
+    );
+    const speakingRemove = fake.reactions.filter(
+      (r) => r.messageId === mentionMsg.id && r.emoji === '💬' && r.action === 'remove',
+    );
+    expect(speakingAdd).toHaveLength(1);
+    expect(speakingRemove).toHaveLength(1);
+    // 추가 후 제거 순서
+    expect(fake.reactions.indexOf(speakingAdd[0]!)).toBeLessThan(fake.reactions.indexOf(speakingRemove[0]!));
+  });
+
+  it('runTurn 이 던져도 💬 가 제거된다', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mentionMsg = fake.seedFrom('human-1', '@forge 안녕');
+    mentionMsg.threadRootId = mentionMsg.id;
+    const { deps, runTurn } = await makeDeps(fake);
+
+    runTurn.script = async () => {
+      throw new Error('하네스 실패');
+    };
+
+    await expect(runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mentionMsg.id, mentionId: mentionMsg.id }))
+      .rejects.toThrow();
+
+    // 💬 가 제거됐는지 확인
+    const speakingRemove = fake.reactions.find(
+      (r) => r.messageId === mentionMsg.id && r.emoji === '💬' && r.action === 'remove',
+    );
+    expect(speakingRemove).toBeDefined();
+  });
+
+  it('runTurn 이 타임아웃이어도 💬 가 제거된다', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mentionMsg = fake.seedFrom('human-1', '@forge 안녕');
+    mentionMsg.threadRootId = mentionMsg.id;
+    const { deps, runTurn } = await makeDeps(fake);
+
+    runTurn.script = async () => ({ exitCode: 0, timedOut: true, tail: 'timeout' });
+
+    await expect(runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mentionMsg.id, mentionId: mentionMsg.id }))
+      .rejects.toThrow();
+
+    // 💬 가 제거됐는지 확인
+    const speakingRemove = fake.reactions.find(
+      (r) => r.messageId === mentionMsg.id && r.emoji === '💬' && r.action === 'remove',
+    );
+    expect(speakingRemove).toBeDefined();
+  });
+
+  it('리액션 호출이 실패해도 턴이 정상 완료된다', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mention = fake.seedFrom('human-1', '@forge 질문');
+    mention.threadRootId = mention.id;
+    const { deps, runTurn } = await makeDeps(fake);
+
+    // 리액션을 실패하도록 조립
+    vi.spyOn(fake, 'addReaction').mockRejectedValueOnce(new Error('network error'));
+    vi.spyOn(fake, 'removeReaction').mockRejectedValueOnce(new Error('network error'));
+
+    runTurn.script = async () => {
+      await fake.post(CHANNEL, '답변', mention.id);
+      return { exitCode: 0, timedOut: false, tail: '' };
+    };
+
+    // 에러 없이 완료되어야 함
+    await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mention.id, mentionId: mention.id });
+
+    // 발화는 정상적으로 되었는지 확인
+    const actualPosts = fake.posts.filter((p: { body: string }) => p.body !== NO_REPLY_NOTICE);
+    expect(actualPosts).toHaveLength(1);
+  });
+
+  it('리액션을 추가해도 post 호출 횟수가 늘지 않는다 (리액션 != 발화)', async () => {
+    const fake = new FakeMurmur(defOf());
+    const mentionMsg = fake.seedFrom('human-1', '@forge 안녕');
+    mentionMsg.threadRootId = mentionMsg.id;
+    const { deps } = await makeDeps(fake);
+
+    await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: mentionMsg.id, mentionId: mentionMsg.id });
+
+    // 기본 runTurn.script 는 발화 없이 끝나므로 NO_REPLY_NOTICE 가 하나 있음
+    const noReplyCount = fake.posts.filter((p: { body: string }) => p.body === NO_REPLY_NOTICE).length;
+    expect(noReplyCount).toBe(1); // 기본 스크립트라 NO_REPLY_NOTICE 만 있음
   });
 });
 

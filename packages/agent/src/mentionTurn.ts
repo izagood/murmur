@@ -26,6 +26,10 @@ export interface MentionTurnMurmur {
   readThread(channelId: string, threadRootId: string | null, since?: number): Promise<MessageRow[]>;
   /** 발화 후 메시지의 seq 를 반환한다. */
   post(channelId: string, body: string, threadRootId: string | null): Promise<number>;
+  /** 멘션이 왔음을 알리는 리액션(👀). 대상은 멘션 메시지 자체다. */
+  addReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
+  /** 턴이 진행 중임을 알리는 리액션(💬). 턴 종료 후 반드시 제거한다. */
+  removeReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
 }
 
 /** 한 턴을 실제로 돌리는 함수. 프로덕션은 pty.ts::runPtyTurn 을 그대로 넘기고, 테스트는
@@ -124,6 +128,10 @@ export interface MentionTarget {
    * main.ts 가 이미 계산해 둔 값을 그대로 받는다(브리프: "여기서 새로 계산하지 마라 —
    * 계산하는 순간 네 번째 진실 원천이 된다"). */
   threadRootId: string | null;
+  /** 멘션 메시지 자체의 id. 리액션 대상은 앵커가 아니라 이것이다.
+   * 채널 최상위 멘션(threadRootId===null)에서는 threadRootId 가 이미 이것이므로,
+   * 생략하면 threadRootId 를 쓴다. */
+  mentionId?: string;
 }
 
 /**
@@ -149,6 +157,8 @@ function warnOnDuplicatePosts(key: string, postCount: number): void {
 
 export async function runMentionTurn(deps: MentionTurnDeps, target: MentionTarget): Promise<void> {
   const { channelId, threadRootId: anchor } = target;
+  // mentionId 가 없으면 threadRootId 를 쓴다 — 채널 최상위 멘션에서两者는 같다.
+  const mentionId = target.mentionId ?? target.threadRootId ?? target.channelId;
 
   // 정의는 매 턴 새로 읽는다 — UI 로 지시문을 바꾸면 다음 턴부터 바로 반영된다(spec §3).
   const def = await deps.murmur.definition();
@@ -255,6 +265,13 @@ export async function runMentionTurn(deps: MentionTurnDeps, target: MentionTarge
     `[mentionTurn] ${key}: 턴 시작 (채널=${channelId}, 앵커=${anchor ?? 'null'}, 하네스=${def.harness}, 워크스페이스=${rec.workspaceDir})`,
   );
 
+  // 👀 신호: 멘션을 집은 즉시. 대상은 멘션 메시지 자체(mentionId)다.
+  deps.murmur.addReaction(channelId, mentionId, '👀').catch((err: unknown) => {
+    console.error(
+      `[mentionTurn] ${key}: 👀 리액션 실패(턴은 계속한다) — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+
   // #123: 지연 ack — 턴이 임계 안에 끝나면 아무것도 올리지 않고, 넘기면 "진행 중"을 올린다.
   // 짧은 턴에 매번 메시지를 더하면 그것도 소음이다 — 사용자가 불편해한 것은 **긴** 작업이다.
   //
@@ -282,11 +299,24 @@ export async function runMentionTurn(deps: MentionTurnDeps, target: MentionTarge
 
   const ackTimer = setTimeout(postAck, ackThresholdMs);
 
+  // 💬 신호: 턴이 도는 중. 턴 시작 시 즉시/addReactionAsync하고 종료 후 반드시 제거한다.
+  deps.murmur.addReaction(channelId, mentionId, '💬').catch((err: unknown) => {
+    console.error(
+      `[mentionTurn] ${key}: 💬 리액션 실패(턴은 계속한다) — ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+
   let result: TurnResult;
   try {
     result = await deps.runTurn(plan, { cwd: rec.workspaceDir, timeoutMs: deps.turnTimeoutMs });
   } finally {
     clearTimeout(ackTimer);
+    // 💬 는 반드시 제거한다 — 타임아웃·예외로 끝나도 남으면 "영원히 작업 중"이라는 거짓 신호가 된다.
+    deps.murmur.removeReaction(channelId, mentionId, '💬').catch((err: unknown) => {
+      console.error(
+        `[mentionTurn] ${key}: 💬 리액션 제거 실패 — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   // 타이머가 이미 터졌는데 발화가 아직 왕복 중이면 `ackSeq` 가 비어 있다 — 그 상태로 세면
