@@ -130,6 +130,10 @@ export function SearchPalette({ open, onClose }: Props) {
   const enabledResults = results;
 
   return (
+    // 닫힘 처리를 여기서 직접 한다. `Menu.tsx` 의 document mousedown 이나 `Composer.tsx`
+    // 의 relatedTarget 경로를 재사용하지 않는 이유: 이건 **모달**이라 백드롭이 화면 전체를
+    // 덮는다. `e.target === e.currentTarget` 로 백드롭 자신을 눌렀을 때만 닫으면 되고,
+    // document 리스너를 붙이면 오히려 팔레트 안쪽 클릭까지 걸러 내야 한다.
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-24"
       onClick={(e) => {
