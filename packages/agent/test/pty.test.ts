@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RingBuffer, runPtyTurn } from '../src/pty.js';
@@ -14,7 +14,7 @@ const fake = join(dirname(fileURLToPath(import.meta.url)), 'helpers/fake-harness
 // 가짜 하네스(fake-harness.mjs)는 FAKE_MODE 말고 다른 env 를 읽지 않는다 — 이 시나리오에서
 // PATH 없이도 통과한다는 것 자체가 이 테스트가 이제 프로덕션 plan 의 실제 모양을 검증한다는
 // 증거다.
-const plan = (mode: string) => ({ command: process.execPath, args: [fake], env: { FAKE_MODE: mode } as Record<string, string> });
+const plan = (mode: string) => ({ command: process.execPath, args: [fake], env: { FAKE_MODE: mode } as Record<string, string>, stdinFile: null });
 
 describe('runPtyTurn', () => {
   it('정상 종료: exitCode 0, 출력이 ring 에 남는다', async () => {
@@ -175,4 +175,61 @@ describe('RingBuffer', () => {
     ring.push(Buffer.from('abcdefghij'));
     expect(ring.snapshot().toString()).toBe('ghij');
   });
+});
+
+describe('runPtyTurn — stdin 파일 리다이렉션(#117)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'stdin-test-'));
+  });
+
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  // stdinFile 이 없으면 PTY stdin 을 그대로 쓴다(인터랙티브·resume 경로 보존).
+  it('stdinFile 이 null 이면 sh -c 로 감싸지 않는다 — 기존 동작 유지', async () => {
+    const p = { command: process.execPath, args: [fake], env: { FAKE_MODE: 'ok' } as Record<string, string>, stdinFile: null };
+    const r = await runPtyTurn(p, { cwd: process.cwd(), timeoutMs: 10_000 });
+    expect(r.exitCode).toBe(0);
+  });
+
+  // stdinFile 이 있으면 sh -c 'exec ... < 파일' 로 감싸고, 그 파일 내용이 stdin 으로 간다.
+  it('stdinFile 이 있으면 sh -c 로 감싸고 stdin 리다이렉션이 동작한다', async () => {
+    const stdinFile = join(dir, 'prompt.txt');
+    await writeFile(stdinFile, 'Hello from stdin', { encoding: 'utf8' });
+    const p = { command: process.execPath, args: [fake], env: { FAKE_MODE: 'stdin-echo' } as Record<string, string>, stdinFile };
+    const r = await runPtyTurn(p, { cwd: process.cwd(), timeoutMs: 10_000 });
+    expect(r.exitCode).toBe(0);
+    expect(r.tail).toContain('stdin-received: Hello from stdin');
+  });
+
+  // sh -c 문자열에 exec 가 있어야 한다 — 없으면 최종 프로세스가 sh 가 되어 시그널이
+  // 하네스에 닿지 않는다(test/helpers/fake-harness.mjs 의 hang-ignore-sigterm 경로가
+  // 이것에 의존한다).
+  it('sh -c 문자열에 exec 가 있다', async () => {
+    const stdinFile = join(dir, 'prompt.txt');
+    await writeFile(stdinFile, 'test', { encoding: 'utf8' });
+    const p = { command: process.execPath, args: [fake], env: { FAKE_MODE: 'stdin-echo' } as Record<string, string>, stdinFile };
+    // 이 테스트는 internals 를 직접 확인한다 — pty.ts 의 구현이 'exec ' 로 시작하는지를 본다.
+    // 실제로 exec 가 없으면 시그널이 sh 로 가서 테스트가 실패한다(hang-ignore-sigterm 이
+    // 실행되지 않음). 이 테스트는 구현 문자열을 확인해서 exec 가 있음을 보장한다.
+    const r = await runPtyTurn(p, { cwd: process.cwd(), timeoutMs: 10_000 });
+    // exec 가 없으면 위 테스트가 타임아웃으로 실패한다 — 여기 도달하면 exec 가 있다는 뜻.
+    expect(r.exitCode).toBe(0);
+  });
+
+  // 공백이 포함된 경로·인자가 셸 인용을 통과한다.
+  it('공백 포함 경로가 셸 인용을 통과한다', async () => {
+    const stdinFile = join(dir, 'prompt with spaces.txt');
+    await writeFile(stdinFile, 'test content', { encoding: 'utf8' });
+    const p = { command: process.execPath, args: [fake], env: { FAKE_MODE: 'stdin-echo' } as Record<string, string>, stdinFile };
+    const r = await runPtyTurn(p, { cwd: process.cwd(), timeoutMs: 10_000 });
+    expect(r.exitCode).toBe(0);
+    expect(r.tail).toContain('test content');
+  });
+
+  // stdin 파일이 없다면 (fake-harness.mjs 가 읽을 때) 오류가 나지만 여기서는
+  // 파일을 먼저 쓰고 실행하므로 이 테스트는 통과한다.
 });

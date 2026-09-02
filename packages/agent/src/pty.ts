@@ -17,6 +17,16 @@
 import pty from 'node-pty';
 import type { TurnPlan } from './turn.js';
 
+/**
+ * 셸 인용 — 단일 인자를 안전한 셸 문자열로 만든다.
+ * 공백, $, ", ', 등이 있는 경로·인자를 그대로 붙이면 셸이 이를 특별한 문자로
+ * 해석하거나 단어 분리해 명령이 깨진다. 단일 인용부호 안에 넣고, 내부의 단일 인용은
+ * `'...'\''...'` 로 전치한다(셸의 표준 규칙).
+ */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
 // SIGTERM → SIGKILL 유예 시간. 하네스가 모델 요청을 붙잡고 있는 도중일 수 있다 — 바로
 // SIGKILL 을 쏘면 정리(임시 파일, in-flight 요청 등)할 기회 자체를 빼앗는다.
 const SIGKILL_GRACE_MS = 5_000;
@@ -98,12 +108,28 @@ export interface RunPtyTurnOptions {
  * PTY 안에서 plan 을 한 턴 실행하고 종료를 기다린다. 이 함수는 절대 reject 하지 않는다 —
  * 하네스가 어떻게 죽든(정상, 비정상, 타임아웃) exitCode/timedOut/tail 로 표현 가능한 결과이지,
  * 호출자가 catch 를 따로 준비해야 하는 예외 상황이 아니다.
+ *
+ * stdinFile 이 있으면 `sh -c 'exec ... < 文件'` 로 감싸서 PTY 안에서 stdin 리다이렉션한다.
+ * `exec` 가 없으면 최종 프로세스가 sh 가 되어 시그널이 하네스에 닿지 않는다.
+ * stdinFile 이 null 이면 PTY stdin 을 그대로 쓴다(인터랙티브·resume 턴용).
  */
 export function runPtyTurn(plan: TurnPlan, opts: RunPtyTurnOptions): Promise<TurnResult> {
   return new Promise((resolve) => {
     const tail = new RingBuffer(TAIL_CAP_BYTES);
 
-    const proc = pty.spawn(plan.command, plan.args, {
+    // stdinFile 이 있으면 셸로 감싸서 stdin 리다이렉션한다. 인자·경로에 셸 인용을 적용한다.
+    let command: string;
+    let args: string[];
+    if (plan.stdinFile) {
+      const quotedArgs = plan.args.map(shellQuote).join(' ');
+      command = 'sh';
+      args = ['-c', `exec ${plan.command} ${quotedArgs} < ${shellQuote(plan.stdinFile)}`];
+    } else {
+      command = plan.command;
+      args = plan.args;
+    }
+
+    const proc = pty.spawn(command, args, {
       cwd: opts.cwd,
       env: plan.env,
       cols: 120,
