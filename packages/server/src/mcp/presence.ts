@@ -27,14 +27,19 @@ export interface AgentPresence {
   /** 지금 온라인인 에이전트 목록. 만료된 항목은 읽는 김에 정리한다. */
   online(): string[];
   /** 스윕을 시작한다. 만료된 항목을 정리하고 presence.changed 이벤트를 발행한다. */
-  startSweep(app: FastifyInstance): void;
+  startSweep(app: SweepHost): void;
   /** 스윕을 강제로 한 번 돌린다(테스트용). */
   sweep(): void;
   /** 보관 중인 에이전트 수. 만료 정리가 실제로 도는지 확인하는 데만 쓴다. */
   size(): number;
 }
 
-interface FastifyInstance {
+/**
+ * 스윕 인터벌을 정리해 줄 수 있는 것. fastify 의 `FastifyInstance` 를 그대로 받지 않고
+ * 필요한 만큼만 좁게 요구한다 — 이 모듈은 순수하게 유지해 `presence.test.ts` 가 서버를
+ * 띄우지 않고 만료를 검증할 수 있어야 한다.
+ */
+export interface SweepHost {
   addHook(hook: 'onClose', fn: () => void | Promise<void>): void;
 }
 
@@ -69,7 +74,7 @@ export function createAgentPresence(opts: { ttlMs: number; now?: () => number })
   /**
    * 스윕: 만료된 항목을 찾고 presence.changed 이벤트를 발행한다.
    * 읽기 경로(online())가 이미 정리를 하므로, sweeper 는 이벤트를 발행하는 목적으로만
-   * 존재한다. 이미 접속해 있는 클라이언트에게 "오프라인이됐다"를 알릴 주체가 필요하다.
+   * 존재한다. 이미 접속해 있는 클라이언트에게 "오프라인이 됐다"를 알릴 주체가 필요하다.
    */
   const sweep = () => {
     const expired = cleanup(byAgent);
@@ -101,6 +106,10 @@ export function createAgentPresence(opts: { ttlMs: number; now?: () => number })
       if (sweepInterval) return;
       const intervalMs = opts.ttlMs / 2;
       sweepInterval = setInterval(sweep, intervalMs);
+      // 이 스윕만으로 프로세스를 살려 두지 않는다. 서버가 살아 있으면 HTTP 리스너가
+      // 이미 이벤트 루프를 붙잡고 있고, 서버를 닫고도 남는 인터벌은 테스트 프로세스가
+      // 끝나지 못하게 만든다(onClose 를 부르지 않는 테스트가 하나만 있어도 그렇다).
+      sweepInterval.unref?.();
       app.addHook('onClose', async () => {
         if (sweepInterval) {
           clearInterval(sweepInterval);
