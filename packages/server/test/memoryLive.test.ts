@@ -86,6 +86,23 @@ describe('memory MCP tools', () => {
     }
   });
 
+  // 삭제는 멱등이다. inbox 가 at-least-once 라 같은 지시가 두 번 처리될 수 있고,
+  // 그때 재삭제가 에러로 오면 성공한 작업이 실패로 기록된다.
+  it('deleting an absent memory succeeds (idempotent)', async () => {
+    const client = await mcpClient(agent1Pat);
+    try {
+      const first = await callTool(client, 'memory.set', { slug: 'mem/never-existed', value: null });
+      expect(first).toEqual({ ok: true });
+
+      await callTool(client, 'memory.set', { slug: 'mem/twice', value: 'x' });
+      await callTool(client, 'memory.set', { slug: 'mem/twice', value: null });
+      const again = await callTool(client, 'memory.set', { slug: 'mem/twice', value: null });
+      expect(again).toEqual({ ok: true });
+    } finally {
+      await client.close();
+    }
+  });
+
   it('list returns only slugs, not values', async () => {
     const client = await mcpClient(agent1Pat);
     try {
@@ -120,6 +137,16 @@ describe('memory MCP tools', () => {
 
       const notMyMemory2 = await callTool(client2, 'memory.get', { slug: 'mem/agent1only' });
       expect(notMyMemory2.error?.code).toBe('not_found');
+
+      // get 만 검사하면 list 의 스코프가 비어 있어도 통과한다 — 실제로 listMemory 에서
+      // 계정 조건을 지웠을 때 이 테스트가 초록이었다(다른 테스트가 우연히 잡았을 뿐이다).
+      const list1 = await callTool(client1, 'memory.list', {});
+      expect(list1.slugs).toContain('mem/agent1only');
+      expect(list1.slugs).not.toContain('mem/agent2only');
+
+      const list2 = await callTool(client2, 'memory.list', {});
+      expect(list2.slugs).toContain('mem/agent2only');
+      expect(list2.slugs).not.toContain('mem/agent1only');
     } finally {
       await client1.close();
       await client2.close();

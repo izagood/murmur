@@ -5,7 +5,7 @@
 --
 -- 키는 (account_id, slug) 다. account 에 FK 와 on delete cascade 를 걸어,
 -- 계정이 지워지면 그 계정의 메모리도 함께 지워진다 — 남겨 둘 이유가 없고,
--- 남기면删제가删제가아니게된다(#111의 message FK 와 같은 문제).
+-- 남기면 삭제가 삭제가 아니게 된다(#111 의 message FK 와 같은 문제).
 create table agent_memory (
   account_id uuid not null references account(id) on delete cascade,
   -- slug 문법: buzz의 NIP-AE에서 차용 — `core` 또는 `^mem/[a-z0-9][a-z0-9_-]{0,63}(/…)*$`

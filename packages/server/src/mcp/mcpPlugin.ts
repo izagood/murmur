@@ -276,13 +276,9 @@ function buildMcpServer(
     if (!isValidSlug(slug)) {
       return jsonResult({ error: { code: 'invalid_slug', message: 'invalid slug format' } });
     }
-    if (value !== null && value.length > MAX_MEMORY_VALUE_LENGTH) {
-      return jsonResult({ error: { code: 'too_long', message: `value must be at most ${MAX_MEMORY_VALUE_LENGTH} characters` } });
-    }
+    // 길이는 위 zod `.max()` 가 이미 거른다 — 여기서 또 재지 않는다.
+    // 삭제는 멱등이라 '없는 것을 지웠다'는 오류가 아니다(services/memory.ts 주석).
     const result = await setMemory(pool, account.id, slug, value);
-    if (result === 'not_found') {
-      return jsonResult({ error: { code: 'not_found', message: 'memory not found' } });
-    }
     if (result === 'too_many') {
       return jsonResult({
         error: { code: 'too_many', message: `at most ${MAX_MEMORY_ITEMS_PER_ACCOUNT} memories per account` },
