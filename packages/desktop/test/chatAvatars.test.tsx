@@ -48,7 +48,7 @@ describe('#161 2단계 작성자 아바타 거터', () => {
   });
 
   it('에이전트는 거터에서도 글리프로 표시된다', () => {
-    // 에이전트 계정을店里에서 만든다
+    // 에이전트 계정을 여기서 만든다
     useAppStore.getState().set({
       accounts: {
         u2: acc('u2', 'bot', 'agent'),
@@ -73,11 +73,27 @@ describe('#161 2단계 작성자 아바타 거터', () => {
 describe('#161 2단계 답글 컨트롤', () => {
   // 서버의 replyCount 를 쓴다 — 스토어에 답글을 넣지 않고 replyCount 만 준 루트가
   // 그 수를 보여준다. 클라이언트 계산 제거를 지키는 선이다.
-  it('replyCount 가 있으면 서버 값이 표시된다', () => {
+  // 서버 값과 클라이언트 계산이 **어긋나는** 상황이어야 구분이 검사된다. 스토어에만
+  // 답글을 넣고 replyCount 를 다르게 주면, 서버 값을 쓰는 구현은 51 을 보이고 예전
+  // 클라이언트 계산은 2 를 보인다 — 그 차이가 이 작업의 존재 이유(히스토리 창 밖의
+  // 오래된 답글)를 그대로 재현한다.
+  //
+  // replyCount 만 주고 스토어를 비워 두면 되돌려도 통과한다 — 실제로 그랬다.
+  it('답글 수가 서버 값에서 온다 (스토어 계산이 아니다)', () => {
     fakeController();
-    render(<MessageItem message={msg('m1', 'c1', 1, 'root', 'u2', { replyCount: 5 })} />);
+    useAppStore.getState().set({
+      messages: {
+        c1: [
+          msg('m1', 'c1', 1, 'root', 'u2', { replyCount: 51 }),
+          msg('r1', 'c1', 2, 'reply', 'u1', { threadRootId: 'm1' }),
+          msg('r2', 'c1', 3, 'reply', 'u1', { threadRootId: 'm1' }),
+        ],
+      },
+    });
+    render(<MessageItem message={msg('m1', 'c1', 1, 'root', 'u2', { replyCount: 51 })} />);
 
-    expect(screen.getByRole('button', { name: '5 replies' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /51 replies/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^2 replies/ })).toBeNull();
   });
 
   it('replyCount 가 null 이면 답글 컨트롤이 안 나온다', () => {
