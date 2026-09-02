@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { sessionStore } from '../src/lib/session';
+import { sessionStore, type StoredSessions, type StoredCommunity } from '../src/lib/session';
 
 /** Tauri IPC 스텁. 키체인은 IPC 뒤에 있으므로 여기서 그 경계를 흉내낸다. */
 function keychain(): { vault: Map<string, string>; invoke: ReturnType<typeof vi.fn> } {
@@ -22,29 +22,31 @@ afterEach(() => {
   delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
-const session = { baseUrl: 'http://x:3400', token: 'murs_secret' };
+const community: StoredCommunity = { accountId: 'acct_123', baseUrl: 'http://x:3400', token: 'murs_secret', handle: 'testuser' };
+const sessions: StoredSessions = { active: 'acct_123', communities: [community] };
 
 describe('세션 보관 — 키체인이 있을 때', () => {
   it('keeps the token out of localStorage', async () => {
     const { vault } = keychain();
 
-    await sessionStore.save(session);
+    await sessionStore.save(sessions);
 
     expect(JSON.stringify(vault ? [...vault.values()] : [])).toContain('murs_secret');
+    expect(localStorage.getItem('murmur.sessions')).toBeNull();
     expect(localStorage.getItem('murmur.session')).toBeNull();
     expect(JSON.stringify(localStorage)).not.toContain('murs_secret');
   });
 
   it('round-trips through the keychain', async () => {
     keychain();
-    await sessionStore.save(session);
+    await sessionStore.save(sessions);
 
-    expect(await sessionStore.load()).toEqual(session);
+    expect(await sessionStore.load()).toEqual(sessions);
   });
 
   it('clears the keychain entry', async () => {
     const { vault } = keychain();
-    await sessionStore.save(session);
+    await sessionStore.save(sessions);
 
     await sessionStore.clear();
 
@@ -52,27 +54,27 @@ describe('세션 보관 — 키체인이 있을 때', () => {
     expect([...vault.values()]).toEqual([]);
   });
 
-  // 배포 순간 전원이 로그아웃되면 안 된다. 기존 사용자의 토큰은 localStorage 에 있다.
   it('migrates an existing localStorage session into the keychain and removes the plaintext', async () => {
-    localStorage.setItem('murmur.session', JSON.stringify(session));
+    localStorage.setItem('murmur.session', JSON.stringify({ baseUrl: 'http://x:3400', token: 'murs_secret' }));
     const { vault } = keychain();
 
     const loaded = await sessionStore.load();
 
-    expect(loaded).toEqual(session);
+    expect(loaded).toEqual({
+      active: null,
+      communities: [{ accountId: '', baseUrl: 'http://x:3400', token: 'murs_secret', handle: '' }],
+    });
     expect([...vault.values()].join()).toContain('murs_secret');
-    expect(localStorage.getItem('murmur.session')).toBeNull(); // 평문은 남기지 않는다
+    expect(localStorage.getItem('murmur.session')).toBeNull();
   });
 
-  // 키체인이 잠겨 있거나 사용자가 접근을 거부하면 읽기가 던진다. 그때 로그아웃시키는 것보다
-  // 평문 경로로 물러나 세션을 유지하는 편이 낫다 — 아직 마이그레이션 전일 수도 있다.
   it('falls back to localStorage when the keychain read fails', async () => {
-    localStorage.setItem('murmur.session', JSON.stringify(session));
+    localStorage.setItem('murmur.sessions', JSON.stringify(sessions));
     (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
       invoke: vi.fn(async () => { throw new Error('keychain locked'); }),
     };
 
-    expect(await sessionStore.load()).toEqual(session);
+    expect(await sessionStore.load()).toEqual(sessions);
   });
 
   it('does not throw when saving fails', async () => {
@@ -80,16 +82,16 @@ describe('세션 보관 — 키체인이 있을 때', () => {
       invoke: vi.fn(async () => { throw new Error('keychain locked'); }),
     };
 
-    await expect(sessionStore.save(session)).resolves.toBeUndefined();
+    await expect(sessionStore.save(sessions)).resolves.toBeUndefined();
   });
 });
 
 describe('세션 보관 — 키체인이 없을 때(브라우저 개발)', () => {
   it('uses localStorage so dev in a browser still works', async () => {
-    await sessionStore.save(session);
+    await sessionStore.save(sessions);
 
-    expect(await sessionStore.load()).toEqual(session);
-    expect(localStorage.getItem('murmur.session')).toBeTruthy();
+    expect(await sessionStore.load()).toEqual(sessions);
+    expect(localStorage.getItem('murmur.sessions')).toBeTruthy();
   });
 
   it('returns null with nothing stored', async () => {
@@ -97,16 +99,76 @@ describe('세션 보관 — 키체인이 없을 때(브라우저 개발)', () =>
   });
 
   it('ignores a corrupt entry instead of throwing', async () => {
-    localStorage.setItem('murmur.session', '{not json');
+    localStorage.setItem('murmur.sessions', '{not json');
 
     expect(await sessionStore.load()).toBeNull();
   });
 
   it('clears localStorage', async () => {
-    await sessionStore.save(session);
+    await sessionStore.save(sessions);
 
     await sessionStore.clear();
 
     expect(await sessionStore.load()).toBeNull();
+  });
+});
+
+describe('다중 커뮤니티 (#164)', () => {
+  it('같은 계정 id로 저장하면 항목을 늘리지 않고 갱신한다', async () => {
+    keychain();
+    await sessionStore.save({
+      active: 'acct_123',
+      communities: [{ accountId: 'acct_123', baseUrl: 'http://a:3400', token: 'token_a', handle: 'user_a' }],
+    });
+
+    await sessionStore.save({
+      active: 'acct_123',
+      communities: [{ accountId: 'acct_123', baseUrl: 'http://b:3400', token: 'token_b', handle: 'user_b' }],
+    });
+
+    const loaded = await sessionStore.load();
+    expect(loaded?.communities.length).toBe(1);
+    expect(loaded?.communities?.[0]?.token).toBe('token_b');
+  });
+
+  it('서로 다른 계정 id는 항목을 둘로 만든다', async () => {
+    keychain();
+    await sessionStore.save({
+      active: 'acct_123',
+      communities: [{ accountId: 'acct_123', baseUrl: 'http://a:3400', token: 'token_a', handle: 'user_a' }],
+    });
+
+    await sessionStore.save({
+      active: 'acct_456',
+      communities: [
+        { accountId: 'acct_123', baseUrl: 'http://a:3400', token: 'token_a', handle: 'user_a' },
+        { accountId: 'acct_456', baseUrl: 'http://b:3400', token: 'token_b', handle: 'user_b' },
+      ],
+    });
+
+    const loaded = await sessionStore.load();
+    expect(loaded?.communities.length).toBe(2);
+  });
+
+  it('active를 바꾸면 유지된다', async () => {
+    keychain();
+    await sessionStore.save({
+      active: 'acct_123',
+      communities: [
+        { accountId: 'acct_123', baseUrl: 'http://a:3400', token: 'token_a', handle: 'user_a' },
+        { accountId: 'acct_456', baseUrl: 'http://b:3400', token: 'token_b', handle: 'user_b' },
+      ],
+    });
+
+    await sessionStore.save({
+      active: 'acct_456',
+      communities: [
+        { accountId: 'acct_123', baseUrl: 'http://a:3400', token: 'token_a', handle: 'user_a' },
+        { accountId: 'acct_456', baseUrl: 'http://b:3400', token: 'token_b', handle: 'user_b' },
+      ],
+    });
+
+    const loaded = await sessionStore.load();
+    expect(loaded?.active).toBe('acct_456');
   });
 });

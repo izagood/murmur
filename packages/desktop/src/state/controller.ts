@@ -21,8 +21,9 @@ export class Controller {
     /**
      * 세션이 되돌릴 수 없이 죽었을 때 호출된다(자격증명 폐기·origin 거부).
      * 컨트롤러는 화면을 모르므로 사유 문구만 위로 올리고, 무엇을 보여줄지는 App 이 정한다.
+     * #164: accountId 파라미터가 추가되어 어느 커뮤니티의 세션이 죽었는지 알 수 있다.
      */
-    private onSessionLost: (message: string) => void = () => {},
+    private onSessionLost: (message: string, accountId: string) => void = () => {},
   ) {}
 
   // fire-and-forget 호출의 unhandled rejection 방지 — 실패는 조용히 무시(다음 이벤트/리컨실이 자연 복구).
@@ -73,7 +74,8 @@ export class Controller {
     // 되돌릴 수 없는 사유다. 로컬 상태를 비우고 사유를 위로 올린다 — 안 그러면 사용자는
     // 빨간 점과 영구 재연결만 본다(조용한 실패).
     this.clearLocal();
-    this.onSessionLost(Controller.LOST_MESSAGE[reason]);
+    const me = useAppStore.getState().me;
+    this.onSessionLost(Controller.LOST_MESSAGE[reason], me?.id ?? '');
   }
 
   /** 서버 호출 없이 로컬만 비운다. 이미 죽은 자격증명으로 로그아웃을 보내는 것은 무의미하다. */
