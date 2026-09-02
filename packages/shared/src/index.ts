@@ -160,6 +160,13 @@ export interface DmView {
   memberIds: string[];
 }
 
+export interface ChannelPrefRow {
+  accountId: string;
+  channelId: string;
+  mutedAt: string | null;
+  starredAt: string | null;
+}
+
 export interface LeaseRow {
   repo: string;
   path: string;
