@@ -48,7 +48,6 @@ export function Sidebar({ onLogout, onOpenSettings }: {
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
   const [editTopic, setEditTopic] = useState('');
   const [editRepo, setEditRepo] = useState('');
-  const [editRepoUnbind, setEditRepoUnbind] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
   const closeCreate = (): void => {
@@ -61,7 +60,6 @@ export function Sidebar({ onLogout, onOpenSettings }: {
     setEditingChannelId(null);
     setEditTopic('');
     setEditRepo('');
-    setEditRepoUnbind(false);
     setEditError(null);
   };
 
@@ -69,7 +67,6 @@ export function Sidebar({ onLogout, onOpenSettings }: {
     setEditingChannelId(channel.id);
     setEditTopic(channel.topic);
     setEditRepo(channel.repo ?? '');
-    setEditRepoUnbind(false);
     setEditError(null);
   };
 
@@ -80,10 +77,17 @@ export function Sidebar({ onLogout, onOpenSettings }: {
     if (editTopic !== original?.topic) {
       input.topic = editTopic;
     }
-    if (editRepoUnbind) {
-      input.repo = null;
-    } else if (editRepo !== (original?.repo ?? '')) {
-      input.repo = editRepo || undefined;
+    // repo 는 **키 부재(변경 없음)와 null(바인딩 해제)를 구분**해야 한다. 그래서 원래
+    // 값과 다를 때만 키를 넣는다 — topic 만 고칠 때 repo 키가 따라가면 바인딩이 조용히
+    // 끊긴다.
+    //
+    // 필드를 비운 것은 **해제 의사**로 읽는다. 필드가 이 채널의 바인딩을 표현하는 유일한
+    // 곳이므로, 바인딩이 남아 있는데 필드가 비어 보이는 상태를 만들면 안 된다. 예전에는
+    // 이 자리에 `editRepo || undefined` 가 있었는데, 그러면 키는 들어가지만 값이
+    // undefined 라 JSON 에서 사라진다 — 사용자가 필드를 비우고 저장했는데 아무 일도
+    // 일어나지 않고 안내도 없었다.
+    if (editRepo !== (original?.repo ?? '')) {
+      input.repo = editRepo === '' ? null : editRepo;
     }
     try {
       await getController().updateChannel(editingChannelId, input);
@@ -145,19 +149,10 @@ export function Sidebar({ onLogout, onOpenSettings }: {
               type="text"
               aria-label="Repository"
               className="flex-1 rounded bg-zinc-900 px-2 py-1 text-sm text-zinc-200 placeholder-zinc-500"
-              placeholder="repo (선택)"
+              placeholder="repo (비우면 해제)"
               value={editRepo}
-              onChange={(e) => { setEditRepo(e.target.value); setEditRepoUnbind(false); setEditError(null); }}
+              onChange={(e) => { setEditRepo(e.target.value); setEditError(null); }}
             />
-            <label className="flex items-center gap-1 text-xs text-zinc-400">
-              <input
-                type="checkbox"
-                checked={editRepoUnbind}
-                onChange={(e) => { setEditRepoUnbind(e.target.checked); if (e.target.checked) setEditRepo(''); setEditError(null); }}
-                className="rounded"
-              />
-              해제
-            </label>
           </div>
           {editError && <p role="alert" className="mb-1 text-[10px] text-red-400">{editError}</p>}
           <div className="flex gap-1">

@@ -144,7 +144,7 @@ describe('Sidebar', () => {
       await waitFor(() => expect(c.updateChannel).toHaveBeenCalledWith('c1', { topic: '일반 Talk' }));
     });
 
-    it('repo 를 명시적으로 해제하면 null 이 요청에 간다', async () => {
+    it('repo 필드를 비우면 null 이 요청에 간다 (조용히 무시되지 않는다)', async () => {
       const c = fakeController();
       c.updateChannel.mockResolvedValue(chan('c1', 'c1', null));
       asAdmin();
@@ -156,9 +156,11 @@ describe('Sidebar', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: '채널 편집' }));
 
       expect((screen.getByLabelText('Repository') as HTMLInputElement).value).toBe('old-repo');
-      fireEvent.click(screen.getByLabelText('해제'));
+      fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '' } });
       fireEvent.click(screen.getByText('저장'));
 
+      // 필드를 비운 것은 해제 의사다. undefined 가 아니라 null 이어야 한다 —
+      // undefined 는 JSON 에서 사라져 조작이 조용히 무시된다.
       await waitFor(() => expect(c.updateChannel).toHaveBeenCalledWith('c1', { repo: null }));
     });
 
