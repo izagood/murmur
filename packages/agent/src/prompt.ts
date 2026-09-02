@@ -14,18 +14,6 @@ export const BODY_LIMIT = 8000;
 /** 답을 올리지 않고 프로세스가 끝났을 때 러너가 에이전트 계정으로 스레드에 남기는 문구(spec §4 발화 경로). */
 export const NO_REPLY_NOTICE = '(답 없이 턴을 끝냈습니다 — 프로세스는 정상 종료, 발화 없음)';
 
-/** #123: 임계 시간을 넘겨도 턴이 아직 돌고 있을 때 **러너가** 올리는 진행 통지.
- * 에이전트가 올리는 것이 아니다 — 러너가 올려야 자기 seq 를 알아 발화 판정에서 뺄 수 있다.
- *
- * #144 (코멘트): 이 고정 문구는 사용자가 이미 아는 것만 말한다 — 스레드 슬롯을 쓰면서 정보를 0 만큼 준다.
- * 반면 "avcs intent 를 만들고 merge3 결함 재현 테스트부터 붙인다 — 서너 턴 걸린다"는 같은 슬롯으로
- * 사용자가 기다릴지 끊을지 판단할 근거를 준다. 그래서 에이전트가 직접 `message.progress` MCP 도구로
- * 진행 설명을 올리며, 이 상수는 더 이상 쓰이지 않는다 — 남겨두면 나중에 지우는 걸 깜빡할 수 있으니
- * 코멘트만 남겨둔다.
- *
- * @deprecated #144에서 에이전트가 직접 progress 메서드로 진행 설명을 올리므로 더 이상 사용하지 않음.
- * 단 에이전트가 진행 설명을 안 올린 경우를 위해 ACK_NOTICE_PHRASE_PHRASE 은 남겨둔다. */
-export const ACK_NOTICE = '(작업 진행 중 — 결과를 내고 있습니다)';
 
 /** MAX_ATTEMPTS 를 소진했을 때 채널에 남기는 통지문구(#82). */
 export const FAILURE_NOTICE = '(답변에 실패했습니다 — 운영자 확인이 필요합니다)';
@@ -73,10 +61,6 @@ export function buildSystemPrompt(opts: {
     // 진행 설명 예시: "avcs intent 를 만들고 merge3 결함 재현 테스트부터 붙인다 — 서너 턴 걸린다"
     '긴 작업을 시작할 때는 먼저 `message.progress` MCP 도구로 짧게 무슨 작업인지 설명하고 들어간다. ',
     '이 진행 설명은 결과 발화로 세지 않으며, 사용자가 기다릴지 끊을지 판단할 근거를 준다.',
-    '',
-    // #123 (legacy): 이 문구는 더 이상 사용하지 않음 — #144에서 에이전트가 직접 progress 메서드로
-    // 진행 설명을 올리므로. 남겨두면 나중에 지우는 걸 깜빡할 수 있으니 코멘트만 남겨둔다.
-    // '긴 작업인 경우 러너가 먼저 "진행 중" 통지를 보낼 수 있다 — 그 경우에도 결과는 내가 한 번만 올리면 된다.',
     '',
     `답변은 ${BODY_LIMIT}자를 넘길 수 없다(서버가 거절한다). 채팅이므로 짧고 구체적으로 쓴다.`,
     '모르는 것은 모른다고 말한다. 확인하지 않은 것을 확인한 것처럼 쓰지 않는다.',
@@ -153,19 +137,21 @@ export function buildTurnPrompt(opts: {
  * NO_REPLY_NOTICE 와 커서 전진 판단)와 "여러 번 발화했나"(> 1, 중복 발화 관측). 불리언만
  * 두면 후자를 알 수 없고, 두 함수가 각자 세면 규칙이 둘로 갈린다. 세는 곳은 여기 하나다.
  *
- * #144: `excludeProgress` 가 progress 메시지를 제외한다. 에이전트가 `message.progress` 로 올린
- * 진행 설명은 결과 발화로 세지 않으며, 사용자가 읽을 수 있어야 뜻이 있다.
+ * progress 메시지는 **결과 발화로 세지 않는다.** 에이전트가 `message.progress` 로 올린
+ * 진행 설명이고, 그것을 결과로 세면 "설명만 올리고 결과를 못 올린 턴"이 침묵으로
+ * 취급되지 않아 NO_REPLY_NOTICE 가 억제된다 — #144 가 가장 비싸다고 지목한 문제다.
  *
- * #123 (legacy): `excludeSeqs` 는 **러너가 직접 올린 메시지**(진행 통지)를 빼기 위한 것.
- * #144 에서 에이전트가 직접 progress 메시지를 올리므로 excludeSeqs 는 더 이상 필요 없지만,
- * 하위 호환성을 위해 남겨둔다 — 다만 이제 excludeProgress=true 가 기본이므로 progress 메시지도 제외된다.
+ * 플래그로 두지 않는 이유: progress 를 결과로 세고 싶은 호출자가 없다. 끌 수 있게 두면
+ * 그 인자가 잘못 넘어오는 경로가 생길 뿐이다.
+ *
+ * #123 의 `excludeSeqs`(러너가 직접 올린 진행 통지를 빼던 것)는 제거했다 — 러너가 더
+ * 이상 아무것도 올리지 않는다. 그 폴백은 **1단계의 진행 중 리액션**이 대신한다:
+ * 러너는 내용 있는 설명을 쓸 수 없으므로(하네스 출력 파싱은 pty.ts 의 금지선이다)
+ * 스레드 칸을 쓰지 않는 리액션이 옳은 자리다.
  */
-export function countOwnPostsSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[], excludeProgress = true): number {
-  return messages.filter((m) => 
-    m.authorId === meId && 
-    m.seq > sinceSeq && 
-    !(excludeSeqs?.includes(m.seq)) && 
-    !(excludeProgress && m.kind === MESSAGE_KIND_PROGRESS)
+export function countOwnPostsSince(messages: MessageRow[], meId: string, sinceSeq: number): number {
+  return messages.filter(
+    (m) => m.authorId === meId && m.seq > sinceSeq && m.kind !== MESSAGE_KIND_PROGRESS,
   ).length;
 }
 
@@ -175,6 +161,6 @@ export function countOwnPostsSince(messages: MessageRow[], meId: string, sinceSe
  *
  * #144: progress 메시지는 제외되므로, 진행 설명만 있고 결과가 없는 턴은 NO_REPLY_NOTICE 를 표시한다.
  */
-export function hasOwnPostSince(messages: MessageRow[], meId: string, sinceSeq: number, excludeSeqs?: number[], excludeProgress = true): boolean {
-  return countOwnPostsSince(messages, meId, sinceSeq, excludeSeqs, excludeProgress) > 0;
+export function hasOwnPostSince(messages: MessageRow[], meId: string, sinceSeq: number): boolean {
+  return countOwnPostsSince(messages, meId, sinceSeq) > 0;
 }

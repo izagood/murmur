@@ -64,8 +64,6 @@ export interface MentionTurnDeps {
   murmurUrl: string;
   pat: string;
   turnTimeoutMs: number;
-  /** 이 시간을 넘겨도 턴이 돌고 있으면 '진행 중' 통지를 올린다(#123). 기본값 10초. */
-  ackThresholdMs?: number;
   /** 테스트가 sinceMs 캡처 시점을 결정론적으로 만들기 위한 시계 주입. 생략하면 Date.now. */
   now?: () => number;
 }

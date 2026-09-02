@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentView, MessageRow } from '@murmur/shared';
 import { mentionAnchor, runMentionTurn, type MentionTurnDeps, type MentionTurnMurmur, type RunTurn } from '../src/mentionTurn.js';
-import { ACK_NOTICE, NO_REPLY_NOTICE } from '../src/prompt.js';
+import { NO_REPLY_NOTICE } from '../src/prompt.js';
 import { SessionStore } from '../src/sessions.js';
 import type { Exec } from '../src/workspace.js';
 import type { TurnPlan } from '../src/turn.js';
