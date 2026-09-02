@@ -147,8 +147,8 @@ function buildMcpServer(
     description: '미읽음 inbox 조회. timeoutMs>0이면 새 항목이 올 때까지 long-poll',
     inputSchema: { timeoutMs: z.number().int().min(0).max(25_000).optional(), version: z.string().optional() },
   }, async ({ timeoutMs, version }) => {
-    // 버전이 오면 기록한다 — 이 값은 빌드 시점 커밋을reflect한다(#129).
-    // 같은 에이전트가 다시 접속하면 시각이 갱신된다.
+    // 버전이 오면 기록한다 — 배포가 넣어 준 빌드 시점 값이다(#129). 값이 바뀔 때만
+    // 실제로 쓰이므로 이 핫 패스에 쓰기 비용이 없다(services/runnerVersion.ts 주석).
     if (version) {
       await recordRunnerVersion(pool, account.id, version);
     }
