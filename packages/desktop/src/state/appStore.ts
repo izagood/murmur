@@ -26,17 +26,24 @@ export interface AppState {
   connected: boolean;
   /** 계정별 채널 음소거·즐겨찾기. channelId → preference */
   channelPrefs: Record<string, ChannelPrefRow>;
+  /**
+   * 스코프별 초안. 키는 scopeKey (channelId 또는 thread:<rootId>).
+   * 설정과 달리 사용자가 쓴 문장 전체이므로 로그아웃 시 반드시 삭제한다.
+   */
+  drafts: Record<string, string>;
   set(partial: Partial<AppState>): void;
   upsertMessages(channelId: string, rows: MessageRow[]): void;
   applyReaction(channelId: string, messageId: string, emoji: string, accountId: string, on: boolean): void;
   removeMessage(channelId: string, messageId: string): void;
   reset(): void;
+  clearDrafts(): void;
+  setDraft(scopeKey: string, draft: string): void;
 }
 
 const initial = {
   me: null, accounts: {}, channels: [], dms: [], activeChannelId: null, threadRootId: null,
   messages: {}, typing: {}, hasMore: {}, unread: [], reads: {}, dividerSeq: {},
-  online: [], leases: [], connected: false, channelPrefs: {},
+  online: [], leases: [], connected: false, channelPrefs: {}, drafts: {},
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -78,4 +85,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ messages: { ...get().messages, [channelId]: rows.filter((m) => m.id !== messageId) } });
   },
   reset: () => set({ ...initial }),
+  clearDrafts: () => set({ drafts: {} }),
+  setDraft: (scopeKey, draft) => {
+    if (!draft) {
+      const { [scopeKey]: _, ...rest } = get().drafts;
+      set({ drafts: rest });
+    } else {
+      set({ drafts: { ...get().drafts, [scopeKey]: draft } });
+    }
+  },
 }));

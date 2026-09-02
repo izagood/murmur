@@ -2,6 +2,7 @@ import type { AttachmentRow, ChannelRow, ChannelPrefRow, WsServerEvent } from '@
 import type { ApiClient } from '../lib/api';
 import { connectWs, type WsDownReason, type WsHandle } from '../lib/ws';
 import { sessionStore } from '../lib/session';
+import { draftsStorage } from '../lib/prefs';
 import { silentNotifier, type Notifier } from '../lib/notify';
 import { useAppStore } from './appStore';
 import { usePrefsStore } from './prefsStore';
@@ -79,6 +80,9 @@ export class Controller {
     // 키체인 삭제는 비동기다. 로그아웃이 그것을 기다릴 이유는 없다 — 실패해도 다음 기동의
     // load()가 다시 정리를 시도하고, 로컬 상태는 아래에서 즉시 비워진다.
     this.swallow(sessionStore.clear());
+    // 초안은 사용자가 쓴 문장 전체다. 계정이 로그아웃된 뒤에도磁盘에 남으면
+    // #92(argv 노출)와 PAT 키체인 결정이 세운 기준과 어긋난다.
+    draftsStorage.clear();
     useAppStore.getState().reset();
   }
 
