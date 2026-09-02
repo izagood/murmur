@@ -326,6 +326,9 @@ export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = 
                 role="option"
                 aria-selected={i === active}
                 type="button"
+                // 핸들을 속성으로 노출한다. 테스트가 textContent 에서 핸들을 뽑으면
+                // 장식(에이전트 표시 등)이 하나 늘 때마다 깨진다 — 실제로 그랬다.
+                data-handle={a.handle}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${i === active ? 'bg-indigo-50' : ''}`}
                 // mousedown 을 막지 않으면 클릭 전에 textarea 가 blur 되어 커서 위치가 사라진다.
                 onMouseDown={(e) => e.preventDefault()}
@@ -423,9 +426,11 @@ export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = 
             className={`rounded px-2 py-0.5 text-sm text-zinc-600 hover:bg-zinc-100 ${
               picking ? 'bg-zinc-200' : ''
             }`}
+            // 누르는 동안 textarea 가 blur 되면 커서 자리가 사라진다.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (picking) return closeLists();
+              // 자동완성이 열려 있었다면 자리를 넘겨받는다 — 두 목록이 겹치면 안 된다.
               setQuery(null);
               setPicking(true);
               setActive(0);
@@ -433,15 +438,15 @@ export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = 
           >
             @
           </button>
-          <label
-            className="cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-600 hover:bg-zinc-100"
-            aria-label="Attach a file"
-          >
+          {/* aria-label 은 **input** 에 붙인다. label 에 붙이면 그 요소 자신의 이름이
+              될 뿐 input 과 연결되지 않아 입력이 접근 불가가 된다. */}
+          <label className="cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-600 hover:bg-zinc-100">
             📎
             <input
               ref={fileRef}
               type="file"
               multiple
+              aria-label="Attach a file"
               className="hidden"
               onChange={(e) => void pickFiles(e.target.files)}
             />
@@ -450,7 +455,10 @@ export function Composer({ onSend, placeholder, rows = 2, autoFocus, scopeKey = 
         <button
           type="button"
           aria-label="Send message"
-          className={`rounded-full bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-zinc-300 disabled:text-zinc-500`}
+          className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-zinc-300 disabled:text-zinc-500"
+          // 여기는 blur 를 막지 않는다 — 전송에 성공하면 초안이 비므로 커서를 보존할
+          // 이유가 없고, 실패하면 사용자가 다시 textarea 를 눌러 이어 쓴다. 반면 위
+          // @·첨부 버튼은 누른 뒤에도 같은 자리에 계속 써야 하므로 막는다.
           onMouseDown={(e) => e.preventDefault()}
           onClick={send}
           disabled={!draft.trim() && !pending.length}
