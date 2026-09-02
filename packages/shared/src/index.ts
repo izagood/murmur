@@ -50,6 +50,8 @@ export interface AgentConfig {
   effort: string | null;
   workingDir: string | null;
   mentionPermission: MentionPermission;
+  /** 에이전트 소유자. null 은 '아무도 attach 할 수 없음'을 의미한다. */
+  ownerAccountId: string | null;
 }
 
 export interface AgentView extends AccountView, AgentConfig {
