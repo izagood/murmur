@@ -180,12 +180,12 @@ export function AgentsSettings() {
                 >
                   {a.handle}
                   <span className="ml-1 text-[10px] text-zinc-400">{a.harness}</span>
-                  {owner !== undefined && (
-                    <span className="ml-1 text-[10px] text-indigo-600">{owner}</span>
-                  )}
-                  {a.ownerAccountId === null && (
-                    <span className="ml-1 text-[10px] text-zinc-400">없음</span>
-                  )}
+                  {/* 세 경우다: 소유자가 없다 / 있고 디렉터리에 있다 / 있는데 디렉터리에
+                      없다. 마지막을 빈 칸으로 그리면 "없다"와 구분되지 않는다 —
+                      docs/design.md 4절이 금지하는 형태의 거울상이다. */}
+                  <span className={`ml-1 text-[10px] ${owner ? 'text-indigo-600' : 'text-zinc-400'}`}>
+                    {a.ownerAccountId === null ? '없음' : (owner ?? '알 수 없는 계정')}
+                  </span>
                 </button>
               );
             })}

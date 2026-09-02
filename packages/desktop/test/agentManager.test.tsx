@@ -318,6 +318,16 @@ describe('AgentsSettings', () => {
       expect(await screen.findByText('없음')).toBeTruthy();
     });
 
+    // 소유자 id 는 있는데 디렉터리에 그 계정이 없으면 "모른다" 다. 빈 칸으로 그리면
+    // "없다"와 구분되지 않는다 — 워커 초안이 그 경우에 아무것도 렌더하지 않았다.
+    it('소유자 id 가 디렉터리에 없으면 빈 칸이 아니라 명시적으로 표시한다', async () => {
+      fakeController([agent('rusalka', { ownerAccountId: 'ghost-account' })]);
+      render(<AgentsSettings />);
+
+      expect(await screen.findByText('알 수 없는 계정')).toBeTruthy();
+      expect(screen.queryByText('없음')).toBeNull();
+    });
+
     it('does not show owner control for non-admin', async () => {
       useAppStore.getState().set({ me: acc('u2', 'alice', 'human', false) });
       fakeController([agent('rusalka', { ownerAccountId: 'u2' })]);
