@@ -172,3 +172,76 @@ describe('다중 커뮤니티 (#164)', () => {
     expect(loaded?.active).toBe('acct_456');
   });
 });
+
+describe('커뮤니티 단위 제거 (#164)', () => {
+  // 세션 하나가 죽었다고 나머지 커뮤니티의 토큰까지 지우면, 이 이슈가 고치려던 것
+  // ("셋 중 하나가 죽었는데 전부 잃는다")의 데이터 버전이 된다.
+  it('하나만 빼고 나머지는 남는다', async () => {
+    await sessionStore.save({
+      active: 'a1',
+      communities: [
+        { accountId: 'a1', baseUrl: 'http://x', token: 't1', handle: 'h1' },
+        { accountId: 'a2', baseUrl: 'http://y', token: 't2', handle: 'h2' },
+      ],
+    });
+
+    await sessionStore.remove('a1');
+
+    const after = await sessionStore.load();
+    expect(after!.communities.map((c) => c.accountId)).toEqual(['a2']);
+    expect(after!.communities[0]!.token).toBe('t2');
+  });
+
+  it('지운 것이 활성이었으면 active 를 비운다', async () => {
+    await sessionStore.save({
+      active: 'a1',
+      communities: [
+        { accountId: 'a1', baseUrl: 'http://x', token: 't1', handle: 'h1' },
+        { accountId: 'a2', baseUrl: 'http://y', token: 't2', handle: 'h2' },
+      ],
+    });
+
+    await sessionStore.remove('a1');
+
+    expect((await sessionStore.load())!.active).toBeNull();
+  });
+
+  it('활성이 아닌 것을 빼면 active 가 유지된다', async () => {
+    await sessionStore.save({
+      active: 'a1',
+      communities: [
+        { accountId: 'a1', baseUrl: 'http://x', token: 't1', handle: 'h1' },
+        { accountId: 'a2', baseUrl: 'http://y', token: 't2', handle: 'h2' },
+      ],
+    });
+
+    await sessionStore.remove('a2');
+
+    expect((await sessionStore.load())!.active).toBe('a1');
+  });
+
+  // 마지막 하나가 빠지면 전부 지운다 — 빈 목록을 남겨 두면 다음 기동이 "커뮤니티가
+  // 있는데 못 붙는다" 로 보인다.
+  it('마지막 하나를 빼면 보관소가 비워진다', async () => {
+    await sessionStore.save({
+      active: 'a1',
+      communities: [{ accountId: 'a1', baseUrl: 'http://x', token: 't1', handle: 'h1' }],
+    });
+
+    await sessionStore.remove('a1');
+
+    expect(await sessionStore.load()).toBeNull();
+  });
+
+  // 마이그레이션된 항목은 active 가 null 이다. 복원이 그것을 첫 커뮤니티로 떨어뜨리지
+  // 않으면 **배포하는 순간 전원이 로그아웃된다** — 이 이슈에서 가장 비싼 실패다.
+  it('active 가 null 이어도 목록의 첫 항목이 남아 있다', async () => {
+    localStorage.setItem('murmur.session', JSON.stringify({ baseUrl: 'http://x', token: 'murs_old' }));
+
+    const loaded = await sessionStore.load();
+
+    expect(loaded!.active).toBeNull();
+    expect(loaded!.communities).toHaveLength(1);
+    expect(loaded!.communities[0]!.token).toBe('murs_old');
+  });
+});

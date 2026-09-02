@@ -73,17 +73,24 @@ export class Controller {
     if (reason === 'network') return;
     // 되돌릴 수 없는 사유다. 로컬 상태를 비우고 사유를 위로 올린다 — 안 그러면 사용자는
     // 빨간 점과 영구 재연결만 본다(조용한 실패).
-    this.clearLocal();
-    const me = useAppStore.getState().me;
-    this.onSessionLost(Controller.LOST_MESSAGE[reason], me?.id ?? '');
+    // **`me` 를 먼저 읽는다.** `clearLocal()` 이 스토어를 reset 하므로 그 뒤에 읽으면
+    // 항상 null 이고, accountId 가 빈 문자열이 되어 App 이 활성 커뮤니티를 못 알아본다.
+    const accountId = useAppStore.getState().me?.id ?? '';
+    this.clearLocal(accountId);
+    this.onSessionLost(Controller.LOST_MESSAGE[reason], accountId);
   }
 
   /** 서버 호출 없이 로컬만 비운다. 이미 죽은 자격증명으로 로그아웃을 보내는 것은 무의미하다. */
-  private clearLocal(): void {
+  /**
+   * `accountId` 를 주면 **그 커뮤니티만** 보관소에서 뺀다(#164). 세션 하나가 죽었다고
+   * 나머지 커뮤니티의 토큰까지 지우면 사용자가 그 커뮤니티들을 통째로 잃는다.
+   * 주지 않으면(명시적 로그아웃) 전부 지운다.
+   */
+  private clearLocal(accountId?: string): void {
     this.stop();
     // 키체인 삭제는 비동기다. 로그아웃이 그것을 기다릴 이유는 없다 — 실패해도 다음 기동의
     // load()가 다시 정리를 시도하고, 로컬 상태는 아래에서 즉시 비워진다.
-    this.swallow(sessionStore.clear());
+    this.swallow(accountId ? sessionStore.remove(accountId) : sessionStore.clear());
     // 초안은 사용자가 쓴 문장 전체다. 계정이 로그아웃된 뒤에도 디스크에 남으면
     // #92(argv 노출)와 PAT 키체인 결정이 세운 기준과 어긋난다. 스토어 액션이
     // 인메모리와 보관소를 함께 비운다 — 보관소만 지우면 스토어에 남는다.

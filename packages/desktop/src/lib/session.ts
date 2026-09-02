@@ -115,6 +115,25 @@ export const sessionStore = {
     }
   },
 
+  /**
+   * **커뮤니티 하나만** 목록에서 뺀다(#164). 세션 하나가 죽었다고 나머지 커뮤니티의
+   * 토큰까지 지우면, 이 이슈가 고치려던 것("셋 중 하나가 죽었는데 전부 잃는다")의
+   * 데이터 버전이 된다.
+   *
+   * 지운 것이 활성이었으면 `active` 를 비운다 — 다음 기동이 첫 커뮤니티로 떨어진다.
+   */
+  async remove(accountId: string): Promise<void> {
+    const current = await this.load();
+    if (!current) return;
+    const communities = current.communities.filter((c) => c.accountId !== accountId);
+    if (!communities.length) return this.clear();
+    await this.save({
+      active: current.active === accountId ? null : current.active,
+      communities,
+    });
+  },
+
+  /** 전부 지운다 — 마지막 커뮤니티가 사라졌거나 사용자가 명시적으로 로그아웃했을 때다. */
   async clear(): Promise<void> {
     const invoke = tauriInvoke();
     if (!invoke) { clearPlain(); localStorage.removeItem(LEGACY_KEY); return; }
