@@ -226,7 +226,11 @@ export function Sidebar({ onLogout, onOpenSettings }: {
               onContextMenu={(e) => { props.onContextMenu?.(e); }}
             >
               {ChannelButton}
+              {/* props 를 그대로 펼친다 — ref 와 aria-haspopup/aria-expanded 가 여기
+                  붙어야 한다. Menu.tsx 주석이 그 계약을 적어 뒀고, 빼먹어도 타입은
+                  통과한다(초판이 그렇게 접근성 속성과 포커스 복귀를 잃었다). */}
               <button
+                {...props}
                 onClick={(e) => { e.stopPropagation(); props.onClick(); }}
                 className="ml-auto rounded px-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
               >
@@ -236,7 +240,7 @@ export function Sidebar({ onLogout, onOpenSettings }: {
           )}
           items={menuItems}
           placement="bottom"
-          position={{ x: 0, y: 0 }}
+          openOnContextMenu
         />
       </div>
     );

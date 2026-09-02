@@ -483,21 +483,52 @@ describe('채널 컨텍스트 메뉴 (#111)', () => {
     expect(screen.getByRole('menu')).toBeTruthy();
   });
 
-  it('우클릭으로 연 메뉴가 그 즉시 닫히지 않는다', () => {
+  // 여는 이벤트가 자기를 닫아서는 안 된다. **실제 순서를 재현해야** 검증이 된다 —
+  // 우클릭은 `mousedown`(button=2) 이 먼저 오고 `contextmenu` 가 뒤에 온다. 메뉴는
+  // 후자에서 열리므로 그 mousedown 은 리스너가 붙기 전에 지나간다.
+  //
+  // 초판 테스트는 `contextMenu` 만 발사하고 "우클릭으로는 절대 닫히지 않는다"를
+  // 단정했다 — 그건 요구사항이 아니라 결함이었다(메뉴가 열린 상태에서 다른 곳을
+  // 우클릭해도 안 닫힌다).
+  it('여는 우클릭이 자기 메뉴를 닫지 않는다', () => {
     fakeController();
     render(<Sidebar onLogout={vi.fn()} onOpenSettings={vi.fn()} />);
 
     const button = getChannelButton('general');
+    fireEvent.mouseDown(button, { button: 2 });
     fireEvent.contextMenu(button);
+
     expect(screen.getByRole('menu')).toBeTruthy();
+  });
 
-    // 바깥 클릭으로 닫히지 않는다 — 좌클릭으로만 닫힌다.
+  it('메뉴가 열린 뒤 바깥을 누르면 닫힌다 — 버튼 종류와 무관하다', () => {
+    fakeController();
+    render(<Sidebar onLogout={vi.fn()} onOpenSettings={vi.fn()} />);
+
+    fireEvent.contextMenu(getChannelButton('general'));
+    expect(screen.getByRole('menu')).toBeTruthy();
     fireEvent.mouseDown(document.body, { button: 2 });
-    expect(screen.queryByRole('menu')).toBeTruthy();
+    expect(screen.queryByRole('menu')).toBeNull();
 
-    // 좌클릭으로는 닫힌다
+    fireEvent.contextMenu(getChannelButton('general'));
+    expect(screen.getByRole('menu')).toBeTruthy();
     fireEvent.mouseDown(document.body, { button: 0 });
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  // Menu.tsx 는 접근성 속성과 ref 를 renderTrigger 로 넘기지만 **적용을 강제할 수
+  // 없다** — 소비자가 전개를 빼먹어도 타입은 통과한다. 초판이 그렇게 aria 속성과
+  // Escape 후 포커스 복귀를 잃었다.
+  it('트리거에 접근성 속성이 붙어 있다', () => {
+    fakeController();
+    render(<Sidebar onLogout={vi.fn()} onOpenSettings={vi.fn()} />);
+
+    const trigger = screen.getAllByRole('button', { name: '⋯' })[0]!;
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('⋯ 클릭과 우클릭이 같은 항목을 낸다', () => {

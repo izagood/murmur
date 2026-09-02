@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useLayoutEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useCallback, useLayoutEffect, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 
 export interface MenuItem {
   label: string;
@@ -18,12 +18,11 @@ export interface MenuItem {
 export interface MenuTriggerProps {
   ref: (el: HTMLElement | null) => void;
   onClick: () => void;
-  /** 우클릭으로 메뉴를 연다. 좌표는 clientX/clientY 다.
-   * 이 속성이 없으면 좌표 기반 열기가 동작하지 않는다 — 기존 consumers(#113, #121) 와
-   * mutual exclusive 다.
+  /**
+   * 우클릭으로 커서 위치에 연다(#111). `openOnContextMenu` 를 준 소비자에게만 넘어온다 —
+   * 안 준 소비자에게는 `undefined` 라 우클릭 동작이 붙지 않는다.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onContextMenu?: (e: any) => void;
+  onContextMenu?: (e: ReactMouseEvent<HTMLElement>) => void;
   'aria-haspopup': 'menu';
   'aria-expanded': boolean;
 }
@@ -43,16 +42,20 @@ interface MenuProps {
    * 이 열거형으로 표현되지 않는다 — 그 요구가 실제로 생길 때 좌표 기반 배치를 더한다
    * (지금 추측으로 만들면 틀린 추상이 된다).
    *
-   * 좌표를 줄 경우 이 속성 대신 `position` prop 을 쓴다 — 좌표는 'top'|'bottom' 과
-   * mutual exclusive 다. 좌표는 클라이언트 영역(clientX/clientY)를 기준으로 한다.
+   * `openOnContextMenu` 로 열린 경우에는 이 값이 무시되고 커서 좌표가 쓰인다.
    */
   placement?: 'top' | 'bottom';
-  /** 클라이언트 좌표(x, y)에 메뉴를 연다. 화면 밖으로 나가지 않게 자른다. */
-  position?: MenuPosition;
+  /**
+   * 우클릭 진입점을 켠다(#111). 좌표는 소비자가 주지 않는다 — `contextmenu` 이벤트의
+   * `clientX`/`clientY` 를 쓴다. 초판은 `position?: MenuPosition` 이었는데 소비자가
+   * `{x: 0, y: 0}` 같은 **무시되는 더미**를 넘겨야 했다. 값이 쓰이지 않는 데이터는
+   * 플래그로 적어야 읽는 사람이 속지 않는다.
+   */
+  openOnContextMenu?: boolean;
   className?: string;
 }
 
-export function Menu({ renderTrigger, items, placement = 'top', position, className = '' }: MenuProps) {
+export function Menu({ renderTrigger, items, placement = 'top', openOnContextMenu = false, className = '' }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [openAt, setOpenAt] = useState<MenuPosition | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -78,12 +81,16 @@ export function Menu({ renderTrigger, items, placement = 'top', position, classN
 
   // 바깥 클릭으로 닫는다. document 리스너라 **네이티브** MouseEvent 다 — React 의 합성
   // 이벤트 타입을 쓰면 캐스트로 타입을 속이게 된다(초판이 그랬다).
-  // 우클릭으로 연 경우 그 이벤트가 바깥 클릭 처리되는 것을 피해야 한다 — #111.
-  // 우클릭은 button=2 다. 좌클릭(button=0) 으로만 닫는다.
+  // 우클릭으로 여는 경우에도 이 리스너가 그 이벤트를 잡지 않는다 — 순서가 보장한다:
+  // `mousedown`(button=2) 이 먼저 오고 `contextmenu` 가 뒤에 오는데, 메뉴는 후자에서
+  // 열린다. 즉 여는 시점에는 이 리스너가 아직 붙어 있지 않다.
+  //
+  // 초판은 `e.button !== 0` 로 우클릭을 통째로 무시했는데, 그러면 메뉴가 열린 상태에서
+  // **다른 곳을 우클릭해도 닫히지 않는다.** jsdom 은 `contextMenu` 만 발사해서 그
+  // 차이가 테스트에 드러나지 않는다.
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e: MouseEvent): void => {
-      if (e.button !== 0) return;
       const target = e.target as Node | null;
       if (!target) return;
       if (menuRef.current?.contains(target)) return;
@@ -113,9 +120,10 @@ export function Menu({ renderTrigger, items, placement = 'top', position, classN
   const triggerProps: MenuTriggerProps = {
     ref: (el) => { triggerRef.current = el; },
     onClick: () => setOpen((v) => !v),
-    onContextMenu: position
-      ? (e: any) => {
-          e.preventDefault?.();
+    onContextMenu: openOnContextMenu
+      ? (e: ReactMouseEvent<HTMLElement>) => {
+          // 브라우저 기본 메뉴를 막는다.
+          e.preventDefault();
           setOpen(true);
           setOpenAt({ x: e.clientX, y: e.clientY });
         }
@@ -124,36 +132,27 @@ export function Menu({ renderTrigger, items, placement = 'top', position, classN
     'aria-expanded': open,
   };
 
-  const menuStyle = (() => {
-    if (openAt) {
-      const MENU_MIN_WIDTH = 128;
-      const MENU_MAX_HEIGHT = 300;
-      let x = openAt.x;
-      let y = openAt.y;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      if (x + MENU_MIN_WIDTH > viewportWidth) {
-        x = viewportWidth - MENU_MIN_WIDTH - 8;
-      }
-      if (x < 8) x = 8;
-      if (y + MENU_MAX_HEIGHT > viewportHeight) {
-        y = viewportHeight - MENU_MAX_HEIGHT - 8;
-      }
-      if (y < 8) y = 8;
-      return { position: 'fixed' as const, left: x, top: y };
-    }
-    const baseStyle = {
-      position: 'absolute' as const,
-      left: placement === 'top' ? undefined : 0,
-      right: placement === 'top' ? 0 : undefined,
-      bottom: placement === 'top' ? '100%' : undefined,
-      top: placement === 'bottom' ? '100%' : undefined,
-    };
-    if (placement === 'top') {
-      return { ...baseStyle, marginBottom: '4px' };
-    }
-    return { ...baseStyle, marginTop: '4px' };
-  })();
+  /**
+   * 좌표로 열렸을 때만 인라인 스타일을 쓴다. **좌표가 없으면 예전 Tailwind 클래스를
+   * 그대로 둔다** — 초판은 두 경로를 모두 인라인 스타일로 바꾸면서 `left: 0`/`right: 0`
+   * 을 새로 넣었고, 그건 기존 소비자(#113 계정 메뉴, #121 메시지 툴바)의 가로 정렬을
+   * 바꾼다. 좌표를 안 준 소비자는 지금과 똑같이 동작해야 한다.
+   *
+   * 화면 밖으로 나가지 않게 자른다. 메뉴 높이는 항목 수에 따라 다르니 실제 높이를 재서
+   * 자르는 것이 정확하지만, 여는 순간에는 아직 렌더되지 않았다. 항목 하나가 약 28px 이라
+   * 항목 수로 어림한다 — 300px 같은 고정값은 항목 셋짜리 메뉴를 화면 아래에서
+   * 불필요하게 위로 밀어 올린다.
+   */
+  const MENU_WIDTH = 128;
+  const EDGE_GAP = 8;
+  const menuStyle = openAt
+    ? (() => {
+        const height = items.length * 28 + 8;
+        const x = Math.max(EDGE_GAP, Math.min(openAt.x, window.innerWidth - MENU_WIDTH - EDGE_GAP));
+        const y = Math.max(EDGE_GAP, Math.min(openAt.y, window.innerHeight - height - EDGE_GAP));
+        return { position: 'fixed' as const, left: x, top: y };
+      })()
+    : undefined;
 
   return (
     <>
@@ -163,7 +162,7 @@ export function Menu({ renderTrigger, items, placement = 'top', position, classN
           ref={menuRef}
           role="menu"
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }}
-          className={`z-10 min-w-32 rounded border border-zinc-700 bg-zinc-800 py-1 shadow-lg ${className}`}
+          className={`${openAt ? '' : `absolute ${placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`} z-10 min-w-32 rounded border border-zinc-700 bg-zinc-800 py-1 shadow-lg ${className}`}
           style={menuStyle}
         >
           {items.map((item, index) => (
