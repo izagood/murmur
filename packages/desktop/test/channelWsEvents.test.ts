@@ -274,7 +274,7 @@ describe('스레드 답글 이벤트를 받는 데스크탑 (#395)', () => {
       msg('m-reply', 'c1', 2, 'reply', 'u2', { threadRootId: 'm-root' }),
     ]);
 
-    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply' });
+    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply', audience: 'all' });
 
     const m = useAppStore.getState().messages['c1']!.find((m) => m.id === 'm-root');
     expect(m!.replyCount).toBe(0);
@@ -288,9 +288,9 @@ describe('스레드 답글 이벤트를 받는 데스크탑 (#395)', () => {
       msg('m-reply', 'c1', 2, 'reply', 'u2', { threadRootId: 'm-root' }),
     ]);
 
-    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply' });
+    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply', audience: 'all' });
     // 두 번째는 스토어에 그 행이 없으므로 아무것도 빼지 않는다(모르는 것을 짐작하지 않는다).
-    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply' });
+    callbacks.current!.onEvent({ type: 'message.deleted', channelId: 'c1', messageId: 'm-reply', audience: 'all' });
 
     const m = useAppStore.getState().messages['c1']!.find((m) => m.id === 'm-root');
     expect(m!.replyCount).toBe(0);
