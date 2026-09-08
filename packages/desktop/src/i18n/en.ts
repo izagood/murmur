@@ -1890,6 +1890,14 @@ export const en = {
   'composer.paste.confirmDetail': 'This message calls {handles}. Each one starts its own turn.',
   'composer.paste.confirmSend': 'Send',
   'composer.paste.confirmCancel': 'Keep editing',
+  /**
+   * 긴 글을 붙여넣었을 때 서는 줄. **몇 자인지 말하는 것이 요점이다** — "길다"만으로는
+   * 사람이 파일로 옮길 만한지 판단할 수 없다. 무엇이 문제인지도 함께 적는다: 상한을 넘긴
+   * 것이 아니라 **읽는 사람의 화면이 밀리는** 것이 이 줄이 서는 이유다.
+   */
+  'composer.paste.long': '{chars} characters — pasting this inline buries the conversation',
+  'composer.paste.asFile': 'Attach as a file',
+  'composer.paste.moving': 'Attaching…',
   'composer.link.pasted': 'Pasted a message link',
   'composer.link.open': 'Go to that message',
 

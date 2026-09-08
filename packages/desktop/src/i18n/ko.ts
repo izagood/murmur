@@ -782,6 +782,9 @@ export const ko = {
   'composer.paste.confirmDetail': '이 메시지는 {handles} 를 부른다. 부른 수만큼 턴이 따로 뜬다.',
   'composer.paste.confirmSend': '보내기',
   'composer.paste.confirmCancel': '더 고치기',
+  'composer.paste.long': '{chars}자 — 그대로 보내면 대화가 밀린다',
+  'composer.paste.asFile': '파일로 첨부',
+  'composer.paste.moving': '첨부하는 중…',
   'composer.link.pasted': '메시지 링크를 붙여넣었다',
   'composer.link.open': '그 메시지로 이동',
 
