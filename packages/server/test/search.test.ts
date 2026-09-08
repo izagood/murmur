@@ -188,6 +188,54 @@ describe('search', () => {
   });
 
   /**
+   * 접두를 **`websearch_to_tsquery` 의 text 꼴 위에** 얹는 이유가 이 넷이다. 낱말을
+   * `tsvector_to_array` 로 날것으로 꺼내 이어 붙이는(더 "간단한") 꼴로 되돌리면 구·`or` 는
+   * 그냥 AND 가 되고 **부정은 제외에서 요구로 뒤집힌다** — 조용히 반대 답을 준다. 그런데
+   * 나머지 테스트는 전부 초록이다. 그래서 여기서 못박는다.
+   */
+  it('keeps websearch operators — phrase, or, negation — through the prefix rewrite', async () => {
+    for (const body of ['zonkfruit zebrafish together', 'zebrafish zonkfruit reversed', 'zonkfruit alone here']) {
+      await app.inject({
+        method: 'POST', url: `/channels/${channelId}/messages`,
+        headers: { authorization: `Bearer ${adminToken}` }, payload: { body },
+      });
+    }
+    // 구: 붙어 있는 것만. 순서가 뒤집힌 줄은 안 걸린다(`<->` 가 살아 있다).
+    const phrase = await searchMessages(pool, adminId, '"zonkfruit zebrafish"');
+    const phraseBodies = phrase.messages.map((m) => m.body);
+    expect(phraseBodies).toContain('zonkfruit zebrafish together');
+    expect(phraseBodies).not.toContain('zebrafish zonkfruit reversed');
+
+    // or: 둘 중 하나만 있어도 걸린다(AND 로 접히지 않는다).
+    const or = await searchMessages(pool, adminId, 'zonkfruit or zebrafish');
+    expect(or.messages.map((m) => m.body)).toContain('zonkfruit alone here');
+
+    // 부정: 뺀 낱말이 든 줄이 결과에 **없어야** 한다. 뒤집히면 정확히 그것만 나온다.
+    const not = await searchMessages(pool, adminId, 'zonkfruit -zebrafish');
+    const notBodies = not.messages.map((m) => m.body);
+    expect(notBodies).toContain('zonkfruit alone here');
+    expect(notBodies).not.toContain('zonkfruit zebrafish together');
+  });
+
+  /**
+   * 채팅 검색에 URL 은 흔히 들어온다. lexeme 안에 `!`·`(`·`&` 가 그대로 들어 있어서,
+   * 낱말을 날것으로 이어 붙이는 꼴이면 `to_tsquery` 가 그걸 다시 파싱하다 **500** 이 난다.
+   */
+  it('answers a pasted URL query', async () => {
+    const url = 'http://x.com/zonkpath?b=1&c=2';
+    await app.inject({
+      method: 'POST', url: `/channels/${channelId}/messages`,
+      headers: { authorization: `Bearer ${adminToken}` }, payload: { body: `보다가 ${url} 를 붙였다` },
+    });
+    const res = await app.inject({
+      method: 'GET', url: `/search?q=${encodeURIComponent(url)}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().messages.map((m: { body: string }) => m.body)).toContain(`보다가 ${url} 를 붙였다`);
+  });
+
+  /**
    * 라우트의 offset 천장과 `hasMore` 는 **같은 값을 봐야 한다.** 어긋나면 마지막 페이지에도
    * '더 보기'가 서고, 누르는 순간 천장을 넘은 offset 이 나가 400 을 받는다.
    */

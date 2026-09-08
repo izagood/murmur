@@ -1253,13 +1253,18 @@ export function searchHasMore(fetched: number, limit: number, offset: number): b
  * (실측: `http://x.com/a` 가 엉뚱한 구 질의가 된다).
  *
  * 낱말이 하나도 안 나오는 질의(`!!!` 같은 것)는 text 꼴이 빈 문자열이고, 거기 `:*` 를 붙이면
- * `to_tsquery` 가 **syntax error 로 터진다**(=500). 그래서 nullif 로 빈 것을 걸러 빈 tsquery 로
- * 접는다 — 아무 것도 맞지 않을 뿐이다.
+ * `to_tsquery` 가 **syntax error 로 터진다**(=500). 그래서 nullif 로 빈 것을 걸러 **NULL** 로
+ * 접는다 — `search @@ null` 은 null 이라 where 가 그 행을 버리고, order by 키도 전 행이 null
+ * 이라 순서가 그대로다. 아무 것도 맞지 않을 뿐이다.
+ *
+ * 여기서 `coalesce(…, ''::tsquery)` 로 받지 **않는** 이유: 빈 tsquery 리터럴은 파싱 시점에
+ * 평가돼서 **낱말이 멀쩡히 있는 정상 질의에도** 검색마다 pg 로그에 한 줄을 남긴다
+ * (`NOTICE: text-search query doesn't contain lexemes: ""`). 로그를 읽는 사람에게 "질의에
+ * 낱말이 없었다"로 보여 오해를 준다. 동작은 NULL 쪽과 같다.
  */
-const PREFIX_TSQUERY = `coalesce(
-      nullif(regexp_replace(websearch_to_tsquery('simple', $1)::text, '''(\\s|$)', ''':*\\1', 'g'), '')::tsquery,
-      ''::tsquery
-    )`;
+const PREFIX_TSQUERY = `nullif(
+      regexp_replace(websearch_to_tsquery('simple', $1)::text, '''(\\s|$)', ''':*\\1', 'g'), ''
+    )::tsquery`;
 
 /**
  * 한 낱말이 두 갈래로 걸린다.
