@@ -202,9 +202,37 @@ describe('search', () => {
         headers: { authorization: `Bearer ${adminToken}` }, payload: { body },
       });
     }
-    const rows = (await searchMessages(pool, adminId, '!!!')).messages;
+    const mine = ['먼저 쓴 줄 !!!', '나중에 쓴 줄 !!!'];
+    const rows = (await searchMessages(pool, adminId, '!!!')).messages
+      .filter((m) => mine.includes(m.body));
     expect(rows.map((m) => m.body)).toEqual(['나중에 쓴 줄 !!!', '먼저 쓴 줄 !!!']);
     expect(rows[0]!.seq).toBeGreaterThan(rows[1]!.seq);
+  });
+
+  /**
+   * **접두 히트가 like 중간일치-only 앞에 온다**는 계약을 본다. 순서만 다르고 결과 집합은
+   * 같으므로 다른 테스트로는 안 잡힌다. 먼저 쓴 줄이 접두 히트, 나중에 쓴 줄이 중간일치-only
+   * 라서, 순위가 사라져 `seq desc` 로만 떨어지면 **나중 것이 먼저** 와 뒤집힌다 — 이 검색이
+   * 원래 앓던 병(흔한 낱말이면 상위 N 이 전부 최근 것)이 바로 그 꼴이다.
+   *
+   * 어느 키가 그 일을 하는지도 재 봤다(200k 프로브 아님, 값 자체): 정렬 첫 키
+   * `(search @@ q) desc` 는 **두 번째 키 `ts_rank` 와 겹친다** — 매치되는 행의 ts_rank 는
+   * 0.0607927, 안 되는 행은 정확히 0 이라 rank 만으로도 이 둘이 갈린다. 그래서 첫 키만
+   * 빼서는 이 테스트가 안 빨개진다(확인함). 빨개지는 것은 **순위 자체를 잃을 때**다
+   * (`order by m.seq desc` 만 남기면 뒤집힌다 — 확인함). 첫 키는 의도를 적어 두는 값이지
+   * 이 테스트가 강제하는 대상이 아니다.
+   */
+  it('puts prefix hits ahead of middle-match-only rows', async () => {
+    for (const body of ['kumquatzz 라는 낱말', 'xkumquatzzy 는 중간일치만']) {
+      await app.inject({
+        method: 'POST', url: `/channels/${channelId}/messages`,
+        headers: { authorization: `Bearer ${adminToken}` }, payload: { body },
+      });
+    }
+    const rows = (await searchMessages(pool, adminId, 'kumquatzz')).messages;
+    expect(rows.map((m) => m.body)).toEqual(['kumquatzz 라는 낱말', 'xkumquatzzy 는 중간일치만']);
+    // 접두 히트가 더 **오래된** 줄이다 — 최신순만 남으면 이 순서가 뒤집힌다.
+    expect(rows[0]!.seq).toBeLessThan(rows[1]!.seq);
   });
 
   /**
