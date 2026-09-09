@@ -21,7 +21,7 @@ import { findCodexSessionId } from './codexSessions.js';
 import { claudeSessionMaterialized } from './claudeSessions.js';
 import { readLastApiError } from './harnessErrors.js';
 import type { AttentionLedger } from './attentionLedger.js';
-import { sessionTranscriptExists, sessionTranscriptMtimeMs } from './harnessErrors.js';
+import { sessionTranscriptGrewSince, sessionTranscriptMtimeMs } from './harnessErrors.js';
 import { ensureDangerousModeAccepted, ensureWorkspaceTrusted } from './workspaceTrust.js';
 import { codexSessionsDir } from './codexHome.js';
 import { ensureWorkspace, workspaceName, type Exec } from './workspace.js';
@@ -990,11 +990,20 @@ export async function runMentionTurn(
           // 계정 전환을 태운다 — 그것이 이 턴이 아직 쓸 수 있는 더 싼 수단이다.
           ...(deps.callsForHuman === false ? {} : {
             /**
-             * 주입이 **먹혔는지**도 잰다(2026-09-08). 증거는 세션 기록 파일의 존재다 —
-             * 화면 문자열로 재면 하네스 버전에 묶이지만, 파일 생성은 사실 자체다.
+             * 주입이 **먹혔는지**도 잰다(2026-09-08). 증거는 세션 기록 파일이고, 화면
+             * 문자열로 재지 않는 이유는 그것이 하네스 버전에 묶이기 때문이다.
+             *
+             * **재는 것은 존재가 아니라 성장이다**(2026-09-09). 파일의 존재로 재면 이 창은
+             * **첫 턴에서만** 산다 — 되살린 턴(`claude -r`)의 기록 파일은 앞 턴에 이미
+             * 생겨 있어 무조건 통과한다. 그 구멍으로 프로덕션에서 턴 둘이 연달아 프롬프트를
+             * 못 받고 각각 10분씩 정지 시계에 접혔다(`sessionTranscriptGrewSince` 머리).
+             *
+             * 기준점은 **턴 시작 시각**이다. 주입 시각이 아닌 이유: 주입은 이 콜백 바깥
+             * (`pty.ts`)에서 일어나 그 시각을 여기서 모르고, 턴 시작 이후에 자란 기록은
+             * 어차피 이 턴의 것이다 — 앞 턴은 이미 끝나 있다.
              */
             confirmDelivery: {
-              probe: () => sessionTranscriptExists(def.harness, sessionIdForProbe, {
+              probe: () => sessionTranscriptGrewSince(def.harness, sessionIdForProbe, turnStartedAtMs, {
                 configDir: deps.claudeConfigDir,
               }),
             },
