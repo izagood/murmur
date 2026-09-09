@@ -311,6 +311,23 @@ export interface RunPtyTurnOptions {
     /** 준비 상한. 넘기면 `PromptNotDeliveredError`. 생략하면 60초. */
     readyTimeoutMs?: number;
     /**
+     * 준비 신호를 본 뒤 **화면이 이만큼 잠잠해지면** 넣는다(2026-09-09). 생략하면 300ms.
+     *
+     * 준비 판정은 최근 바이트에 표시가 **있는가**만 본다. 되살린 턴(`claude -r`)은 앞
+     * 대화를 화면에 되그리므로 그 재생 중에도 표시가 스칠 수 있고, 그때 넣은 붙여넣기는
+     * 아직 그려지지 않은 입력창 밖으로 사라진다. 표시를 본 뒤 흐름이 멈추기를 기다리면
+     * "지금 그려진 것이 입력창"이라는 사실에 훨씬 가까워진다.
+     */
+    readyQuietMs?: number;
+    /**
+     * 정적 대기의 상한(2026-09-09). 생략하면 2초.
+     *
+     * 스피너처럼 **쉬지 않고 그리는** 화면에서 정적이 영영 오지 않을 수 있다. 그때는
+     * 지금까지의 동작(표시를 보면 곧바로 넣는다)으로 되돌아간다 — 기다리다 아예 못 넣는
+     * 것이 제일 나쁘다.
+     */
+    readyQuietMaxMs?: number;
+    /**
      * 준비 상한을 넘겼을 때 **죽이는 대신 부른다**(2026-09-08).
      *
      * 여기까지 온 화면은 사람 손이 필요한 것이다 — 첫 실행 승인 관문이 대표적이고, 그
@@ -581,12 +598,18 @@ export function runPtyTurn(plan: TurnPlan, opts: RunPtyTurnOptions): Promise<Tur
     // ── 프롬프트 주입(2026-09-08). **준비 신호를 본 뒤에만** 쓴다.
     if (opts.injectPrompt) {
       const { text, readyPattern = DEFAULT_READY_PATTERN, readyTimeoutMs = 60_000,
-              onAttention } = opts.injectPrompt;
+              readyQuietMs = 300, readyQuietMaxMs = 2_000, onAttention } = opts.injectPrompt;
       let injected = false;
       const startedAt = Date.now();
       let readyProbe: NodePty.IDisposable | null = null;
+      /** 준비 표시를 **처음** 본 시각. 정적 대기의 상한을 여기서 잰다. */
+      let readySeenAt: number | null = null;
+      let quietTimer: ReturnType<typeof setTimeout> | null = null;
       const readyTimer = setTimeout(() => {
-        if (injected || settled) return;
+        // **준비를 이미 본 뒤라면 이 상한은 남의 일이다**: 정적 대기가 돌고 있고, 그것은
+        // 반드시 주입으로 끝난다(정적이 오거나 상한에 닿는다). 여기서 부르거나 죽이면
+        // 준비를 본 화면을 관문으로 오진한다.
+        if (injected || settled || readySeenAt !== null) return;
         const screen = decodeTailText(tail.snapshot());
         if (onAttention) {
           // **여기서 아무것도 정착시키지 않는다.** `readyProbe` 를 그대로 살려 두므로,
@@ -604,11 +627,16 @@ export function runPtyTurn(plan: TurnPlan, opts: RunPtyTurnOptions): Promise<Tur
         reject(new PromptNotDeliveredError(Date.now() - startedAt, screen));
       }, readyTimeoutMs);
       readyTimer.unref?.();
-      readyProbe = proc.onData(() => {
+      /**
+       * 실제 주입. 준비 표시를 본 **뒤** 화면이 잠잠해지면(또는 정적 상한에 닿으면) 온다.
+       * 두 경로가 한 곳으로 모여야 한다 — 갈라 두면 한쪽만 `injected` 를 세우거나 타이머를
+       * 정리하지 않는 모양이 생긴다.
+       */
+      const inject = (): void => {
         if (injected || settled) return;
-        if (!readyPattern.test(stripAnsi(decodeTailText(tail.snapshot())))) return;
         injected = true;
         clearTimeout(readyTimer);
+        if (quietTimer) clearTimeout(quietTimer);
         readyProbe?.dispose();
         // 감싼 본문과 전송을 나눠 쓴다: 붙여 쓰면 일부 TUI 가 끝 표식과 개행을 한 덩어리로
         // 읽어 전송을 건너뛴다.
@@ -657,6 +685,19 @@ export function runPtyTurn(plan: TurnPlan, opts: RunPtyTurnOptions): Promise<Tur
           // 이 타이머만으로 러너를 살려 두지 않는다 — 턴의 수명은 PTY 가 정한다.
           confirmTimer.unref?.();
         }
+      };
+
+      readyProbe = proc.onData(() => {
+        if (injected || settled) return;
+        if (!readyPattern.test(stripAnsi(decodeTailText(tail.snapshot())))) return;
+        if (readySeenAt === null) readySeenAt = Date.now();
+        // 쉬지 않고 그리는 화면에서 정적이 영영 안 올 수 있다 — 상한에 닿으면 지금까지의
+        // 동작(표시를 보면 곧바로 넣는다)으로 되돌아간다.
+        if (Date.now() - readySeenAt >= readyQuietMaxMs) { inject(); return; }
+        // 바이트가 또 왔다 = 아직 그리는 중이다. 시계를 다시 세운다.
+        if (quietTimer) clearTimeout(quietTimer);
+        quietTimer = setTimeout(inject, readyQuietMs);
+        quietTimer.unref?.();
       });
     }
 

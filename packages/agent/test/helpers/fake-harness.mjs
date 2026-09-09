@@ -266,3 +266,33 @@ if (mode === 'swallowed-enter') {
   setInterval(() => {}, 1_000);
   setTimeout(() => process.exit(24), 20_000); // 안전망
 }
+
+// 되살린 턴(`claude -r`)의 **재생** 흉내(2026-09-09). 앞 대화를 되그리는 동안 화면에
+// 입력창 표시(NBSP 포함)가 스치지만, 그때 온 붙여넣기는 **사라진다** — 입력창이 아직
+// 그려지지 않았기 때문이다. 재생이 끝난 뒤에 온 것만 받는다.
+if (mode === 'replay-then-ready') {
+  let 재생중 = true;
+  const t = setInterval(() => process.stdout.write('과거대화 ❯ \n'), 100);
+  setTimeout(() => {
+    clearInterval(t);
+    재생중 = false;
+    process.stdout.write('\n❯ ');   // 이제 진짜 입력창이다
+  }, 600);
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => {
+    if (재생중) return;                        // 재생 중 붙여넣기는 아무 데도 안 간다
+    if (d.includes('[201~')) { process.stdout.write(`injected:${d}`); process.exit(0); }
+  });
+  setTimeout(() => process.exit(25), 8_000); // 안전망
+}
+
+// 쉬지 않고 그리는 화면(스피너). 정적이 영영 오지 않으므로 정적 상한이 없으면 프롬프트가
+// 한 번도 안 들어간다 — 그 상한이 사는지 재는 데 쓴다. 이쪽은 그리는 중에도 받는다.
+if (mode === 'never-quiet') {
+  setInterval(() => process.stdout.write('❯ '), 50);
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => {
+    if (d.includes('[201~')) { process.stdout.write(`injected:${d}`); process.exit(0); }
+  });
+  setTimeout(() => process.exit(26), 8_000); // 안전망
+}
