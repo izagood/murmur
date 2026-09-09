@@ -253,7 +253,7 @@ export function Composer({
   const [query, setQuery] = useState<MentionQuery | null>(null);
   const [active, setActive] = useState(0);
   /**
-   * 고정 멘션은 **초안과 같은 자리에 산다**(#693, `appStore.ts::stickyMentions`). 지역
+   * 고정 멘션은 **초안과 같은 자리에 산다**(#706, `appStore.ts::stickyMentions`). 지역
    * state 였을 때는 스레드 패널이 언마운트되는 것만으로 사라졌다 — 다른 채널을 한 번 누르면
    * `threadRootId` 가 `null` 이 되고 패널이 통째로 빠진다(`Workspace.tsx`). 초안은 스토어에
    * 남아 돌아오므로 사람은 글은 그대로인데 칩만 없는 입력창을 보고, 그 상태로 Enter 를 누르면

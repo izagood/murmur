@@ -301,7 +301,7 @@ export class Controller {
     });
     // 초안은 기기 로컬에 있으므로 서버 왕복이 없다 — 크리티컬 패스에 둬도 비용이 없다.
     store.hydrateDrafts();
-    // 고정 멘션도 같은 자리에서 읽는다(#693) — 초안만 복원하면 "이 스레드는 그 에이전트를
+    // 고정 멘션도 같은 자리에서 읽는다(#706) — 초안만 복원하면 "이 스레드는 그 에이전트를
     // 부르는 중"이라는 절반만 돌아온다.
     store.hydrateStickyMentions();
 
@@ -411,7 +411,7 @@ export class Controller {
     // 인메모리와 보관소를 함께 비운다 — 보관소만 지우면 스토어에 남는다.
     this.store.getState().clearDrafts();
     // 고정은 문장이 아니지만 *누구와 이야기하던 자리인가*는 남는다. 초안과 같은 매체에
-    // 같은 수명으로 두기로 했으므로 지우는 자리도 여기다(#693).
+    // 같은 수명으로 두기로 했으므로 지우는 자리도 여기다(#706).
     this.store.getState().clearStickyMentions();
     this.store.getState().reset();
   }

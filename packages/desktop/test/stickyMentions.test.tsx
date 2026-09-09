@@ -35,7 +35,7 @@ beforeEach(() => {
   // 창 자체는 undoSend.test.tsx 가 단독으로 지킨다.
   undoSendStorage.saveWindowMs(0);
   useAppStore.getState().reset();
-  // 고정은 이제 기기 로컬에 남는다(#693) — 앞 시험이 적어 둔 것이 다음 시험의 사실이 되면
+  // 고정은 이제 기기 로컬에 남는다(#706) — 앞 시험이 적어 둔 것이 다음 시험의 사실이 되면
   // 어느 것이 무엇을 재는지 알 수 없다.
   localStorage.clear();
   useAppStore.getState().set({
@@ -256,7 +256,7 @@ describe('adding a mention without sending', () => {
 
 
 /**
- * 화면을 떠났다 돌아오는 것 — **이 파일이 처음부터 재야 했던 것**이다(#693).
+ * 화면을 떠났다 돌아오는 것 — **이 파일이 처음부터 재야 했던 것**이다(#706).
  *
  * 고정이 컴포저의 지역 state 였을 때 위의 시험들은 모두 초록이었다. 하나의 컴포저 인스턴스
  * 안에서만 재고 있었기 때문이다(`rerender` 는 언마운트가 아니다). 실제 앱에서 스레드

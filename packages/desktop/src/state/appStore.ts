@@ -140,7 +140,7 @@ export interface AppState {
    */
   drafts: Record<string, string>;
   /**
-   * 스코프별 **멘션 고정**(#693). 키는 초안과 같은 scopeKey 다 — 같은 입력창의 두 반쪽이므로
+   * 스코프별 **멘션 고정**(#706). 키는 초안과 같은 scopeKey 다 — 같은 입력창의 두 반쪽이므로
    * 수명도 같아야 한다.
    *
    * 컴포저의 지역 state 가 아닌 이유가 이 필드의 존재 이유다: 스레드 패널은 조건부 렌더라
