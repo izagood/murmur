@@ -735,6 +735,53 @@ describe('준비 상한 — onAttention 이 있으면 죽이지 않는다', () =
   }, 20_000);
 });
 
+// ── 준비 신호를 본 뒤 **화면이 잠잠해지면** 넣는다(2026-09-09)
+//
+// 준비 판정은 최근 바이트에 표시가 **있는가**만 본다. 되살린 턴(`claude -r`)은 앞 대화를
+// 되그리므로 재생 중에도 표시가 스치고, 그때 넣은 붙여넣기는 아직 그려지지 않은 입력창
+// 밖으로 사라진다 — 2026-09-09 실측에서 되살린 턴 둘이 기록에 한 줄도 남기지 못한 채
+// 각각 10분씩 정지 시계에 접힌 자리의 유력한 가설이 이것이다.
+describe('준비 뒤 정적 대기 — 재생 중 오발을 막는다', () => {
+  it('재생이 끝난 뒤에 넣는다 — 재생 중에 넣으면 프롬프트가 사라진다', async () => {
+    // 'replay-then-ready' 는 600ms 동안 표시를 섞어 그리고, **그동안 온 붙여넣기를
+    // 버린다**(실물의 그 모양). 표시를 보자마자 넣던 옛 동작에서는 이 턴이 프롬프트를
+    // 영영 못 받고 안전망(8초)까지 서 있다.
+    const r = await runPtyTurn(plan('replay-then-ready'), {
+      cwd: process.cwd(), timeoutMs: 15_000,
+      injectPrompt: { text: '안녕', readyQuietMs: 300 },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.tail).toContain('injected:');
+  }, 25_000);
+
+  it('쉬지 않고 그리는 화면에서는 상한에 닿으면 넣는다 — 기다리다 못 넣는 것이 제일 나쁘다', async () => {
+    // 스피너처럼 계속 그리는 화면에서 정적은 영영 오지 않는다. 그때는 지금까지의 동작
+    // (표시를 보면 곧바로 넣는다)으로 되돌아간다.
+    const r = await runPtyTurn(plan('never-quiet'), {
+      cwd: process.cwd(), timeoutMs: 15_000,
+      injectPrompt: { text: '안녕', readyQuietMs: 5_000, readyQuietMaxMs: 300 },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.tail).toContain('injected:');
+  }, 25_000);
+
+  it('준비를 본 뒤에는 준비 상한이 사람을 부르지 않는다 — 정적 대기는 반드시 주입으로 끝난다', async () => {
+    // 픽스처는 300ms 에 표시를 찍는다. 준비 상한(2초)은 그 뒤에 오고, 정적 대기(2초)는
+    // **상한보다 늦게** 끝난다(≈2.3초) — 즉 상한이 먼저 발화하는 배치다. 준비를 이미
+    // 봤으므로 그 발화는 남의 일이어야 한다: 부르면 준비된 화면을 관문으로 오진한다.
+    const 화면: string[] = [];
+    const r = await runPtyTurn(plan('ready-then-echo'), {
+      cwd: process.cwd(), timeoutMs: 15_000,
+      injectPrompt: {
+        text: '안녕', readyTimeoutMs: 2_000, readyQuietMs: 2_000,
+        onAttention: (s) => 화면.push(s),
+      },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(화면).toHaveLength(0);
+  }, 25_000);
+});
+
 // ── 주입이 **먹혔는지** 재는 확인 창(2026-09-08, 스펙 2-5)
 //
 // 준비 신호는 "화면이 입력을 받을 모양이다"까지만 말한다. 2026-09-08 프로덕션에서
