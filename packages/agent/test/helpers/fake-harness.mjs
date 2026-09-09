@@ -267,3 +267,23 @@ if (mode === 'ready-then-gate') {
   });
   setInterval(() => {}, 1_000);
 }
+
+// 2026-09-09 프로덕션의 그 모양: 붙여넣기는 입력창에 들어갔는데 **전송이 삼켜진다.**
+// 붙여넣기와 같은 덩어리로 온 개행은 무시하고, 그 뒤에 따로 오는 개행 하나에만 반응한다 —
+// 러너의 확인 창이 "증거가 없으면 개행을 한 번 더 쏜다"를 지키는지 재는 데 쓴다.
+if (mode === 'swallowed-enter') {
+  setTimeout(() => process.stdout.write('READY\n❯ '), 100);
+  process.stdin.setEncoding('utf8');
+  let 붙었나 = false;
+  process.stdin.on('data', (d) => {
+    if (!붙었나) {
+      // 붙여넣기 덩어리는 받아 두고 전송은 못 본 척한다(같은 청크의 \r 을 무시한다).
+      if (d.includes('[201~')) 붙었나 = true;
+      return;
+    }
+    // 뒤늦게 온 개행 하나 — 이제 전송된다.
+    if (d.includes('\r') || d.includes('\n')) { process.stdout.write('injected:재전송'); process.exit(0); }
+  });
+  setInterval(() => {}, 1_000);
+  setTimeout(() => process.exit(24), 20_000); // 안전망
+}

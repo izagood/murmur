@@ -836,6 +836,46 @@ describe('주입 확인 창 — 준비 신호만으로는 부족하다', () => {
     expect(부름).toHaveLength(0);
   }, 20_000);
 
+  // ── 사람을 부르기 전에 개행 하나를 더 쏜다(2026-09-09)
+  //
+  // 2026-09-09 실측(forge `5e08f534`): 되살린 턴 둘이 연달아 프롬프트를 못 받았고 기록에
+  // 그 31분 동안 한 줄도 없었다. 그 상태의 절반은 "붙여넣기는 들어갔고 전송만 삼켜졌다"
+  // 이고, 그 절반은 개행 한 바이트로 낫는다 — 사람을 부르는 것은 그다음이다.
+  it('증거가 없으면 개행을 한 번 더 쏜다 — 삼켜진 전송이 그 한 바이트로 낫는다', async () => {
+    const 화면: string[] = [];
+    let 들어갔나 = false;
+    // 증거는 화면이 아니라 하네스가 실제로 전송을 받았다는 사실이다 — 프로덕션에서 그
+    // 자리를 세션 기록 파일이 맡는다(`sessionTranscriptGrewSince`).
+    const r = await runPtyTurn(plan('swallowed-enter'), {
+      cwd: process.cwd(), timeoutMs: 10_000,
+      onData: (b) => { if (b.toString('utf8').includes('injected:')) 들어갔나 = true; },
+      injectPrompt: {
+        text: '안녕',
+        confirmDelivery: { probe: () => 들어갔나, withinMs: 200, resendGraceMs: 500 },
+        onAttention: (s) => 화면.push(s),
+      },
+    });
+    // 하네스가 전송을 받아 끝냈다 — 재전송이 없었으면 이 턴은 시간 한도까지 서 있었다.
+    expect(r.exitCode).toBe(0);
+    expect(r.tail).toContain('injected:');
+    // 재전송으로 나았으면 **사람은 부르지 않는다.** 부르면 사람이 멀쩡한 터미널을 연다.
+    expect(화면).toHaveLength(0);
+  }, 20_000);
+
+  it('재전송에도 증거가 없으면 그때 사람을 부른다 — 창이 하나 늘어도 부름은 남는다', async () => {
+    const 화면: string[] = [];
+    const turn = runPtyTurn(plan('ready-then-silent'), {
+      cwd: process.cwd(), timeoutMs: 3_000,
+      injectPrompt: {
+        text: '안녕',
+        confirmDelivery: { probe: () => false, withinMs: 100, resendGraceMs: 100 },
+        onAttention: (s) => 화면.push(s),
+      },
+    });
+    await vi.waitFor(() => expect(화면).toHaveLength(1), { timeout: 3_000 });
+    await turn.catch(() => {});
+  }, 20_000);
+
   it('confirmDelivery 가 없으면 확인 창도 없다 — 기존 호출자는 그대로다', async () => {
     const 화면: string[] = [];
     const r = await runPtyTurn(plan('ready-then-echo'), {

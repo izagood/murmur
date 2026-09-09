@@ -417,9 +417,13 @@ export interface RunPtyTurnOptions {
      * 아무도 몰랐다 — 준비 상한도 조립도 판정도 정상이었으므로 **원인은 미확정이다.**
      * 이 창은 원인이 무엇이든 그 상태를 잡는다.
      *
-     * `probe` 는 "대화가 실제로 시작됐다"를 판정한다. 러너는 세션 기록 파일의 존재를
-     * 쓴다 — 화면 문자열로 재면 하네스 버전에 묶이지만, 파일 생성은 사실 자체다.
+     * `probe` 는 "대화가 실제로 시작됐다"를 판정한다. 러너는 세션 기록 파일이 **턴 시작
+     * 이후에 자랐는가**를 쓴다 — 화면 문자열로 재면 하네스 버전에 묶이지만, 파일이 자란
+     * 것은 사실 자체다(존재로 재면 되살린 턴에서 무조건 통과한다, 2026-09-09).
      * **던지면 "증거 없음"으로 읽는다**: 사람을 부르는 쪽이 조용히 태우는 것보다 낫다.
+     *
+     * 증거가 없으면 **개행 하나를 더 보낸 뒤** 한 창(`resendGraceMs`) 더 기다리고, 그래도
+     * 없으면 부른다 — "붙여넣기는 들어갔고 전송만 삼켜졌다"가 그 한 바이트로 낫는다.
      *
      * `onAttention` 이 없으면 부를 곳이 없으므로 이 창도 돌지 않는다.
      * 생략하면 확인 창 자체가 없다(기존 호출자 그대로).
@@ -428,6 +432,14 @@ export interface RunPtyTurnOptions {
       probe: () => boolean | Promise<boolean>;
       /** 주입부터 증거까지 허용할 시간. 생략하면 15초. */
       withinMs?: number;
+      /**
+       * 재전송 뒤 증거를 다시 기다릴 시간(2026-09-09). 생략하면 `withinMs` 의 1/3.
+       *
+       * 첫 창보다 짧게 두는 이유: 여기까지 왔다는 것은 이미 한 창을 기다렸다는 뜻이고,
+       * 재전송이 먹히면 하네스는 곧바로 기록을 쓴다 — 안 먹히는 경우에 사람을 부르는
+       * 것을 그만큼 늦추지 않는다.
+       */
+      resendGraceMs?: number;
     };
   };
   /** PTY 초기 크기. 생략하면 비대화형 기본 120x40(스펙 §5)이다. */
@@ -732,14 +744,39 @@ export function runPtyTurn(plan: TurnPlan, opts: RunPtyTurnOptions): Promise<Tur
         // 사람을 부를 뿐이고, `readyProbe` 는 이미 소임을 다해 dispose 됐다.
         const confirm = opts.injectPrompt?.confirmDelivery;
         if (confirm && onAttention) {
+          /** 증거가 있는가. 던지면 **없음**으로 읽는다 — 부르는 쪽이 조용히 태우는 것보다 낫다. */
+          const 증거 = async (): Promise<boolean> => {
+            try { return await confirm.probe(); } catch { return false; }
+          };
+          const withinMs = confirm.withinMs ?? 15_000;
+          const graceMs = confirm.resendGraceMs ?? Math.max(50, Math.round(withinMs / 3));
           const confirmTimer = setTimeout(() => {
             if (settled) return;
             void (async () => {
-              let ok = false;
-              try { ok = await confirm.probe(); } catch { ok = false; }
-              if (!ok && !settled) onAttention(decodeTailText(tail.snapshot()), 'startup');
+              if (await 증거() || settled) return;
+              /*
+                **사람을 부르기 전에 개행 하나를 더 쏜다**(2026-09-09).
+
+                여기까지 온 상태는 두 갈래다 — 붙여넣기가 입력창에 들어갔는데 전송만
+                삼켜졌거나, 붙여넣기 자체가 아무 데도 안 갔거나. 앞쪽이면 개행 하나로
+                턴이 그대로 살아나고, 뒤쪽이면 빈 입력창에 개행이 들어가 아무 일도
+                일어나지 않는다(그다음 이 창이 사람을 부른다).
+
+                **본문은 다시 보내지 않는다.** 첫 붙여넣기가 실은 들어갔던 경우에 같은
+                프롬프트가 두 번 서고, 그러면 하네스가 같은 일을 두 번 한다 — 사람을
+                한 창 늦게 부르는 것보다 그쪽이 비싸다.
+              */
+              try { proc.write('\r'); } catch { /* 그 사이에 죽었으면 exit 리스너가 정한다 */ }
+              const graceTimer = setTimeout(() => {
+                if (settled) return;
+                void (async () => {
+                  if (await 증거() || settled) return;
+                  onAttention(decodeTailText(tail.snapshot()), 'startup');
+                })();
+              }, graceMs);
+              graceTimer.unref?.();
             })();
-          }, confirm.withinMs ?? 15_000);
+          }, withinMs);
           // 이 타이머만으로 러너를 살려 두지 않는다 — 턴의 수명은 PTY 가 정한다.
           confirmTimer.unref?.();
         }
