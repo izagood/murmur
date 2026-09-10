@@ -323,11 +323,47 @@ AVCS_BASE_URL=https://your-avcs-server.example.com
 | **투영이 멈췄나** | `murmur_projection_cursor{repo=...}` — 값이 오르지 않으면 §3-B의 사일런트 스킵을 의심한다 |
 | **에이전트가 답하지 않나** | `murmur_agent_oldest_unread_seconds{handle=...}` — 값이 커지면 그 에이전트의 **러너 프로세스가 죽었을 가능성이 가장 크다**. 서버는 정상이고 다른 지표도 정상인 채로 사용자만 답을 못 받는 상태다(2026-09-01 실제 발생). **답할 의무가 있는 계정만 센다** — 사람과, 정의(`agent_config`)가 없는 에이전트 계정은 없다(아래 §7) |
 | avcs 연결 상태 | `GET /healthz` → `avcs.connected` |
+| **지금 도는 서버가 무슨 코드인가** | `GET /healthz` → `version`·`commit`·`startedAt` (아래 §7-A) |
 | 누가 무엇을 바꿨나 | `GET /audit` (admin) |
 | 개별 요청 | 컨테이너 stdout(`LOG_LEVEL`, 기본 info) |
 
 스크레이프에는 인증이 필요하다. 만료 없는 **에이전트 PAT**를 쓰는 것이 실용적이다
 (사람 세션 토큰은 14일에 만료된다).
+
+### 7-A. 배포가 낡았는지 — 서버가 스스로 말한다
+
+`GET /healthz` 가 자기 버전을 싣는다(인증 없이 읽힌다):
+
+```
+$ curl -fsS http://localhost:3400/healthz
+{"ok":true,"avcs":{"connected":false},
+ "version":"0.1.174","commit":"bd06243","startedAt":"2026-09-10T09:12:03.114Z"}
+```
+
+세 값이 **각각 다른 질문**에 답한다 — 하나만 보고 판단하지 마라:
+
+| 값 | 답하는 질문 | 어디서 오나 |
+|---|---|---|
+| `version` | 무슨 릴리스인가 | `packages/desktop/src-tauri/tauri.conf.json`(버전 정본)을 이미지에 실어 읽는다 |
+| `commit` | 정확히 무슨 코드인가 | **빌드가 심는다.** 릴리스 하나에 커밋이 여럿 들어가므로 `git log` 로 따지려면 이것이 필요하다 |
+| `startedAt` | 언제 뜬 것인가 | 프로세스 기동 시각. **버전이 안 바뀌는 재배포에서는 이것만 달라진다** |
+
+**커밋을 심으려면 빌드할 때 넘겨라.** 안 넘겨도 빌드는 되고 `commit` 이 `null` 일 뿐이다:
+
+```
+MURMUR_COMMIT=$(git rev-parse --short HEAD) \
+  docker compose -p <프로젝트> build server
+```
+
+데스크탑 앱은 이것을 **설정 → Communities** 의 각 줄에 그린다. 앱 자신의 릴리스 번호와
+견줘, 서버가 뒤처졌으면 그 줄이 경고색으로 *"이 앱보다 뒤처졌다 — 서버를 재배포해라"* 라고
+말한다. **`version` 이 아예 안 오는 서버**는 이 필드가 생기기 전 판이므로 그 자체가
+재배포 신호다.
+
+> 이 표면이 생긴 이유: 2026-09-10 에 머지 10분 **전**에 빌드된 이미지가 34시간을 돌았고,
+> 그 사이 그 머지가 막았어야 할 사고가 났다. 화면에는 `Connected` 만 떠 있어 아무도
+> 배포가 낡은 것을 몰랐다. **원인 분석의 첫 질문을 "지금 도는 것이 무슨 코드인가"로
+> 만들려면 그것이 한 번의 curl 로 나와야 한다.**
 
 ## 8. 에이전트가 답하지 않을 때
 

@@ -1874,6 +1874,45 @@ export interface ProjectionStatus extends ProjectionRuntime {
   state: ProjectionState;
 }
 
+/**
+ * 서버가 자기에 대해 말하는 것 — `/healthz` 가 싣는다(#693).
+ *
+ * **왜 필요한가:** murmur 는 하루에도 여러 번 릴리스되는데, 배포된 서버는 **조용히 낡는다.**
+ * 화면에는 `Connected` 만 떠서 "지금 도는 서버가 어제 것인지" 를 알 방법이 없었고, 실제로
+ * 머지 10분 전에 빌드된 이미지가 34시간을 돈 적이 있다(2026-09-10 멘션 폭주). 사람이
+ * 재배포 여부를 판단하려면 **서버가 자기 버전을 말해야** 한다.
+ *
+ * 세 값이 각각 **다른 질문**에 답한다 — 그래서 하나로 합치지 않는다:
+ *   `version`   무슨 릴리스인가.  앱 버전과 나란히 놓고 눈으로 견줄 수 있는 유일한 값이다.
+ *   `commit`    정확히 무슨 코드인가. 릴리스 하나에도 커밋이 여럿 들어가므로 `git log` 로
+ *               따지려면 이것이 필요하다.
+ *   `startedAt` 언제 뜬 것인가.     "재배포가 먹었나" 에 즉답한다 — 버전이 안 바뀌는
+ *               재빌드(같은 릴리스 안의 커밋)에서는 **이것만이 달라진다.**
+ */
+export interface ServerVersion {
+  /**
+   * 릴리스 버전(`X.Y.Z`). 정본은 `packages/desktop/src-tauri/tauri.conf.json` 이고
+   * 서버 이미지는 그 파일을 그대로 실어 읽는다(`server/src/version.ts`).
+   *
+   * **`null` 은 "모른다"이지 "없다"가 아니다** — 그 파일이 없는 구성(부분 체크아웃 등)에서
+   * 빈 문자열이나 `0.0.0` 을 지어내면 화면이 틀린 버전을 단언한다.
+   */
+  version: string | null;
+  /** 빌드 때 심은 커밋 sha. 안 심었으면 `null` — 지어내지 않는다. */
+  commit: string | null;
+  /** 이 프로세스가 뜬 시각(ISO). 재시작할 때마다 바뀐다. */
+  startedAt: string;
+}
+
+/**
+ * `/healthz` 의 응답. `ok` 는 프로세스가 살아 있다는 뜻이고 그 이상을 말하지 않는다
+ * (DB 는 `/readyz` 가 본다).
+ */
+export interface ServerHealth extends ServerVersion {
+  ok: true;
+  avcs: { connected: boolean };
+}
+
 export interface ScheduledMessageView {
   id: string;
   channelId: string;

@@ -3497,6 +3497,29 @@ export const en = {
   'collab.state.accepted': 'Accepted',
   'collab.state.rejected': 'Rejected',
   'collab.state.unknown': 'State unknown',
+  // ---------------------------------------------------------------------------
+  // 커뮤니티가 붙어 있는 **서버의 버전**(#693). murmur 는 하루에도 여러 번 릴리스되고
+  // 배포된 서버는 조용히 낡는다 — 이 줄이 없으면 사람이 `docker inspect` 를 쳐야
+  // "재배포해야 하나"에 답할 수 있다.
+  //
+  // | 한국어 | 영어 | 왜 |
+  // |---|---|---|
+  // | 서버 v0.1.174 | `Server v0.1.174` | **`Server` 를 붙인다** — 같은 화면 아래쪽에 앱 버전(`v0.1.174`)이 이미 떠 있어서, 숫자만 두면 둘이 구분되지 않는다 |
+  // | 서버 버전 확인 중 | `Checking server version` | 아직 안 받은 것이지 없는 것이 아니다 |
+  // | 서버가 버전을 말하지 않는다 | `This server does not report its version` | **그 자체가 답이다** — 버전을 싣는 판보다 낡았다는 뜻 |
+  // | {version} 기동 | `Started {ago}` | 버전이 안 바뀌는 재배포에서는 이것만 달라진다 |
+  'community.version.value': 'Server v{version}',
+  'community.version.unknown': 'Checking server version',
+  'community.version.legacy': 'This server does not report its version',
+  /** 버전을 안 싣는 서버에 대고 하는 말. **할 일을 적는다** — 사실만 적으면 사람이 다시 묻는다. */
+  'community.version.legacyDetail': 'It predates version reporting — redeploy it to see which build is running.',
+  /** `{appVersion}` 은 이 앱의 릴리스 번호다. **무엇과 견줬는지**를 밝힌다. */
+  'community.version.behindDetail': 'Behind this app (v{appVersion}) — redeploy the server.',
+  'community.version.aheadDetail': 'Ahead of this app (v{appVersion}).',
+  /** `{ago}` 에 `3 hours ago` 같은 말이 든다. */
+  'community.version.started': 'Started {ago}',
+  /** 빌드에 심긴 커밋. 짧은 sha 라 `git log` 로 그대로 따질 수 있다. */
+  'community.version.commit': 'Build {commit}',
   'rail.community.label': 'Switch community',
   'rail.community.connected': 'connected',
   'rail.community.disconnected': 'disconnected',

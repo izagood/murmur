@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useStore } from 'zustand';
+import { useAgo, useT } from '../../i18n/useT';
+import { serverVersionLine } from '../../lib/serverVersionLine';
 import { createNotifier } from '../../lib/notify';
 import { sessionStore } from '../../lib/session';
 import {
@@ -222,7 +224,13 @@ function CommunityRow(props: {
 }) {
   const { entry, active, busy } = props;
   const connected = useStore(entry.store, (s) => s.connected);
+  // **자기 스토어에서** 읽는다 — `connected` 와 같은 이유다(#166). 활성 커뮤니티의 버전을
+  // 모든 줄에 쓰면 "셋 중 하나만 낡았다" 가 목록 전체에 대한 거짓말이 된다.
+  const serverVersion = useStore(entry.store, (s) => s.serverVersion);
   const label = communityLabel(entry);
+  const t = useT();
+  const ago = useAgo();
+  const version = serverVersionLine({ server: serverVersion, appVersion: __APP_VERSION__, ago, t });
 
   return (
     <div className="px-4 py-3" data-testid={`community-row-${entry.id}`}>
@@ -241,6 +249,33 @@ function CommunityRow(props: {
               {connected ? 'Connected' : 'Disconnected'}
             </span>
           </span>
+          {/* 버전은 **연결 상태와 같은 줄에 두지 않는다.** 그 줄은 이미 주소·점·상태로
+              차 있고, 좁은 창에서 셋이 겹치면 제일 먼저 잘리는 것이 새로 붙은 값이다.
+              한 줄을 더 쓰는 값이기도 하다 — 버전·기동 시각·커밋 셋이 각각 다른 질문에
+              답하므로(`ServerVersion` 주석) 나란히 세워야 뜻이 산다. */}
+          <span
+            className="mt-0.5 flex flex-wrap items-center gap-x-2 text-meta"
+            data-testid={`community-version-${entry.id}`}
+          >
+            <span
+              className={version.tone === 'warning' ? 'text-warning' : 'text-fg-subtle'}
+              data-testid={version.testid}
+            >
+              {version.text}
+            </span>
+            {version.started && (
+              <span className="text-fg-muted">{t('community.version.started', { ago: version.started })}</span>
+            )}
+            {version.commit && (
+              <span className="font-mono text-fg-muted">
+                {t('community.version.commit', { commit: version.commit })}
+              </span>
+            )}
+          </span>
+          {/* 뒤처졌을 때만 선다. 정상일 때 매번 한 줄을 더 쓰면 목록이 읽기 어려워진다. */}
+          {version.detail && (
+            <span className="mt-0.5 block text-meta text-fg-muted">{version.detail}</span>
+          )}
         </span>
         {!active && (
           <button

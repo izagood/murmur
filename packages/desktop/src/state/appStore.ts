@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { draftsStorage, stickyMentionsStorage } from '../lib/prefs';
-import type { AccountStatus, AccountView, AgentTeamRow, ChannelAutoMentionRow, ChannelDoc, ChannelRow, ChannelMemberRow, ChannelPrefRow, DmView, HandleGroupRow, InboxEntry, LeaseRow, MessageRow, PinRow, ProjectionStatus } from '@murmur/shared';
+import type { AccountStatus, AccountView, AgentTeamRow, ChannelAutoMentionRow, ChannelDoc, ChannelRow, ChannelMemberRow, ChannelPrefRow, DmView, HandleGroupRow, InboxEntry, LeaseRow, MessageRow, PinRow, ProjectionStatus, ServerVersion } from '@murmur/shared';
 import type { ObservedRunner, RunnerState } from '../lib/runnerLauncher';
 import type { NotifiedSummary } from '../lib/notified';
 
@@ -94,6 +94,18 @@ export interface AppState {
   terminalTarget: { agentAccountId: string; channelId: string; threadRootId: string } | null;
   leases: LeaseRow[];
   connected: boolean;
+  /**
+   * 지금 붙어 있는 서버가 말한 자기 버전(#693). `/healthz` 에서 온다.
+   *
+   * **`null` 은 "아직/못 물어봤다"** 다 — "버전이 없는 서버"가 아니다. 이 값을 안 싣는 옛
+   * 서버는 `version`·`commit` 이 `null` 인 `ServerVersion` 으로 들어오므로(응답에 필드가
+   * 없으면 `undefined` 지만 `??` 로 눕힌다), 화면에서 "모른다"와 "낡았다"가 갈린다.
+   *
+   * 커뮤니티마다 **자기 스토어에** 산다 — 활성 커뮤니티의 버전을 목록 전체에 쓰면
+   * 셋 중 하나만 낡은 상황이 화면에서 사라진다(`CommunityRow` 가 `connected` 를 자기
+   * 스토어에서 읽는 것과 같은 이유, #166).
+   */
+  serverVersion: ServerVersion | null;
   /**
    * avcs 투영 상태(#267). 60초마다 갱신한다. `null` 은 **"아직 모른다"** 다 —
    * "투영이 없다"가 아니다. 화면이 둘을 갈라 말해야 하므로 별도의 값으로 둔다.
@@ -323,7 +335,8 @@ export const NO_TEAMS: AgentTeamRow[] = [];
 const initial = {
   me: null, accounts: {}, groups: [], teams: null, channels: [], dms: [], activeChannelId: null, threadRootId: null,
   messages: {}, typing: {}, hasMore: {}, unread: [], inboxRevision: 0, reads: {}, dividerSeq: {},
-  online: [], terminalTarget: null, leases: [], connected: false, projectionStatus: null, projectionStatusError: null,
+  online: [], terminalTarget: null, leases: [], connected: false, serverVersion: null,
+  projectionStatus: null, projectionStatusError: null,
   channelPrefs: {}, pins: {}, channelDocs: {}, channelMembers: {}, channelAutoMentions: {}, drafts: {}, stickyMentions: {},
   history: [], historyIndex: -1, notice: null, notifiedGaps: {}, projectionBannerDismissed: null,
   highlightedMessageId: null,
