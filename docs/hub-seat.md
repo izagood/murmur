@@ -1,7 +1,7 @@
 # murmur 가 허브 자리에 선다 — 제안 · 승인 · 배달
 
 > 상태: 설계 (2026-09-10, jaebin 승인 — "제안한 방식으로 진행하자")
-> 그림 정본: <https://claude.ai/code/artifact/d09d9025-d90f-48b9-b451-591a33204be4>
+> 그림 정본: [`hub-seat.html`](hub-seat.html) — 구조 비교도 · 승인 흐름도 · 협업 탭 목업이 붙은 판
 > 선행 문서: [`desktop-collab.html`](desktop-collab.html) — 협업 탭(읽는 자리)
 > 이 문서가 채우는 칸: 그 문서가 *"murmur 에서 제안을 만들고 결정하는 것은 범위 밖"* 이라고
 > 적어 둔 바로 그 자리.
