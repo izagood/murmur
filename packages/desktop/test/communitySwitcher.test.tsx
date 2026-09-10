@@ -490,7 +490,7 @@ describe('커뮤니티 목록의 서버 버전 (#693)', () => {
     a.store.getState().set({
       serverVersion: { version: __APP_VERSION__, commit: null, startedAt: new Date().toISOString() },
     });
-    // B 는 낡았다. **A 가 최신이어도** 이 줄은 뒤처졌다고 말해야 한다.
+    // B 는 **호환 하한보다 낮다.** A 가 멀쩡해도 이 줄은 고장이라고 말해야 한다.
     b.store.getState().set({
       serverVersion: { version: '0.0.1', commit: 'bd06243', startedAt: new Date().toISOString() },
     });
@@ -502,11 +502,11 @@ describe('커뮤니티 목록의 서버 버전 (#693)', () => {
     render(<CommunitySettings onCommunitiesEmpty={vi.fn()} />);
     expect(within(screen.getByTestId(`community-version-${a.id}`)).getByText(`서버 v${__APP_VERSION__}`)).toBeTruthy();
     const rowB = screen.getByTestId(`community-row-${b.id}`);
-    expect(within(rowB).getByTestId('server-version-behind')).toBeTruthy();
+    expect(within(rowB).getByTestId('server-version-incompatible')).toBeTruthy();
     // 커밋도 그 줄에 선다 — `git log` 로 따질 수 있는 유일한 값이다.
     expect(within(rowB).getByText('빌드 bd06243')).toBeTruthy();
-    // 그리고 **A 는 경고가 아니다** — 한 줄의 사정이 옆 줄로 새지 않는다.
-    expect(within(screen.getByTestId(`community-row-${a.id}`)).queryByTestId('server-version-behind')).toBeNull();
+    // 그리고 **A 는 고장이 아니다** — 한 줄의 사정이 옆 줄로 새지 않는다.
+    expect(within(screen.getByTestId(`community-row-${a.id}`)).queryByTestId('server-version-incompatible')).toBeNull();
   });
 
   /**

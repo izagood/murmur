@@ -1,4 +1,4 @@
-import type { ServerVersion } from '@murmur/shared';
+import { MIN_SERVER_VERSION, compareRelease, serverCompat, type ServerVersion } from '@murmur/shared';
 import type { Translate } from '../i18n';
 
 /**
@@ -17,15 +17,25 @@ import type { Translate } from '../i18n';
  * "서버가 뒤처졌다"는 **비교 판정**이라 회귀선이 시각과 버전을 고정해 재야 한다
  * (`projectionBanner` 와 같은 이유). 컴포넌트 안에 두면 그 표를 렌더 트리로만 잴 수 있다.
  *
- * ## 네 사정을 뭉개지 않는다 (`docs/design.md` §4)
+ * ## 다섯 사정을 뭉개지 않는다 (`docs/design.md` §4)
  *
- * ① 버전을 아직 못 받았다 ② 서버가 그 필드를 안 싣는 옛 판이다 ③ 앱과 같다 ④ 앱보다
- * 뒤처졌다 — 넷을 한 문구로 그리면 이 화면이 존재할 이유가 없어진다. ①·② 를 특히 갈라야
- * 하는 이유: **②는 그 자체로 "재배포하라"는 답이다**(버전을 싣는 판보다 낡았다는 뜻이므로).
+ * ① 버전을 아직 못 받았다 ② 서버가 그 필드를 안 싣는 옛 판이다 ③ **호환 하한보다 낮다**
+ * ④ 앱보다 뒤처졌지만 하한은 넘는다 ⑤ 같거나 앞선다.
+ *
+ * ①·② 를 갈라야 하는 이유: **②는 그 자체로 "재배포하라"는 답이다**(버전을 싣는 판보다
+ * 낡았다는 뜻이므로).
+ *
+ * **③·④ 를 가르는 것이 이 판본이 더한 전부다.** 앞 판본은 "앱과 다르다"만 봤는데, 그것은
+ * 거의 **항상** 참이다 — 릴리스는 하루에도 여러 번 돌고 서버는 사람이 손으로 재배포하기
+ * 때문이다. 거의 언제나 켜지는 경고는 아무도 안 본다. 사람이 답해야 할 질문은 "다른가"가
+ * 아니라 **"이 서버에서 이 앱이 도는가"** 이고, 그 답은 `MIN_SERVER_VERSION` 이 안다.
+ *
+ * 그래서 색이 셋이다: 하한보다 낮으면 **고장(danger)**, 뒤처졌지만 도는 것은 **주의
+ * (warning)**, 나머지는 색 없음. 고장과 주의가 같은 색이면 둘 다 안 보인다.
  */
 export interface ServerVersionLine {
   /** 회귀선이 사정을 구별해 물을 수 있도록 사정마다 다르다. */
-  testid: 'server-version-unknown' | 'server-version-legacy'
+  testid: 'server-version-unknown' | 'server-version-legacy' | 'server-version-incompatible'
     | 'server-version-same' | 'server-version-behind' | 'server-version-ahead';
   /**
    * 줄에 그대로 붙는 짧은 말(`v0.1.174`). **버전을 모르면 그 사실을 적는다** — 자리를
@@ -33,10 +43,11 @@ export interface ServerVersionLine {
    */
   text: string;
   /**
-   * 눈에 띄어야 하는가. `warning` 은 **서버가 앱보다 뒤처진 경우뿐**이다 — 그때만 사람이
-   * 할 일(재배포)이 있다. 앞선 경우는 앱 업데이트가 알아서 따라가므로 색을 주지 않는다.
+   * **고장과 주의는 다른 색이다.** `danger` 는 호환 하한보다 낮은 서버 하나뿐이다 — 그때만
+   * 기능이 실제로 죽는다. 뒤처졌지만 도는 서버는 `warning`(해도 되고 안 해도 되는 일),
+   * 같거나 앞선 서버는 색이 없다. 셋을 두 색으로 뭉개면 "지금 고쳐야 하는 것"이 묻힌다.
    */
-  tone: 'warning' | 'muted';
+  tone: 'danger' | 'warning' | 'muted';
   /**
    * 한 줄 더 적을 것. `null` 이면 없다. 뒤처졌을 때 **무엇과 견줘서** 그렇게 말하는지를
    * 밝힌다 — 숫자만 보여 주면 사람이 앱 버전을 따로 찾아야 한다.
@@ -46,26 +57,6 @@ export interface ServerVersionLine {
   started: string | null;
   /** 빌드에 심긴 커밋. 없으면 `null` — 지어내지 않는다. */
   commit: string | null;
-}
-
-/** `X.Y.Z` 만 견준다. 그 밖의 모양은 견주지 않는다(아래 `standing` 주석). */
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
-
-/**
- * 두 릴리스 번호를 견준다. **둘 중 하나라도 `X.Y.Z` 가 아니면 `null`("견줄 수 없다")** 이다.
- *
- * 문자열 비교로 때우지 않는 이유는 하나로 충분하다: `'0.1.9' > '0.1.100'` 이 참이다.
- * murmur 는 이미 세 자리 patch 를 쓰므로(v0.1.174) 그 함정이 **이론이 아니라 지금 일이다.**
- */
-export function compareRelease(a: string, b: string): number | null {
-  const ma = SEMVER.exec(a);
-  const mb = SEMVER.exec(b);
-  if (!ma || !mb) return null;
-  for (let i = 1; i <= 3; i += 1) {
-    const d = Number(ma[i]) - Number(mb[i]);
-    if (d !== 0) return d < 0 ? -1 : 1;
-  }
-  return 0;
 }
 
 export function serverVersionLine(input: {
@@ -104,6 +95,19 @@ export function serverVersionLine(input: {
   }
 
   const text = t('community.version.value', { version: server.version });
+
+  // **호환 하한을 먼저 본다** — 순서가 뜻을 정한다. 하한보다 낮은 서버는 앱보다 뒤처진
+  // 서버이기도 하지만, 두 말 중 사람이 들어야 하는 것은 "기능이 죽는다" 쪽이다.
+  // '뒤처졌다' 를 먼저 그리면 정작 고쳐야 할 것이 부드러운 문구에 묻힌다.
+  if (serverCompat(server.version) === 'too-old') {
+    return {
+      testid: 'server-version-incompatible', tone: 'danger',
+      text: t('community.version.incompatible', { version: server.version }),
+      detail: t('community.version.incompatibleDetail', { minVersion: MIN_SERVER_VERSION }),
+      started, commit,
+    };
+  }
+
   const cmp = compareRelease(server.version, appVersion);
 
   if (cmp === null || cmp === 0) {
@@ -116,9 +120,12 @@ export function serverVersionLine(input: {
   }
 
   if (cmp < 0) {
+    // 뒤처졌지만 **하한은 넘는다**(위에서 걸러졌다). 그래서 문구가 "재배포해라"가 아니라
+    // 무엇을 확인했는지를 적는다 — 사람이 지금 당장 할 일은 없다는 것이 이 줄의 내용이다.
     return {
       testid: 'server-version-behind', tone: 'warning', text,
-      detail: t('community.version.behindDetail', { appVersion }), started, commit,
+      detail: t('community.version.behindDetail', { appVersion, minVersion: MIN_SERVER_VERSION }),
+      started, commit,
     };
   }
 

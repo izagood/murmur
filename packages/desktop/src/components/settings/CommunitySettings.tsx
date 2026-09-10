@@ -200,6 +200,16 @@ export function CommunitySettings({ onCommunitiesEmpty }: {
 }
 
 /**
+ * 버전 줄의 색. **`ServerVersionLine.tone` 이 정하고 여기서는 고르기만 한다** — 어떤
+ * 사정이 무슨 색인지는 판정이고, 그 판정은 회귀선이 재는 자리에 있어야 한다.
+ */
+const TONE_CLASS: Record<'danger' | 'warning' | 'muted', string> = {
+  danger: 'font-medium text-danger',
+  warning: 'text-warning',
+  muted: 'text-fg-subtle',
+};
+
+/**
  * 커뮤니티 한 줄. 연결 상태는 **자기 스토어에서** 읽는다 — 활성 커뮤니티의 값을 모든 줄에
  * 쓰면 "셋 중 하나가 끊겼다" 가 목록 전체에 대한 거짓말이 된다(#166 이 커뮤니티별
  * `connected` 를 만든 이유).
@@ -257,8 +267,10 @@ function CommunityRow(props: {
             className="mt-0.5 flex flex-wrap items-center gap-x-2 text-meta"
             data-testid={`community-version-${entry.id}`}
           >
+            {/* 고장은 고장 색으로, 주의는 주의 색으로. 둘을 한 색으로 그리면 "지금
+                재배포해야 하는 서버"가 "그냥 좀 뒤처진 서버" 사이에 묻힌다. */}
             <span
-              className={version.tone === 'warning' ? 'text-warning' : 'text-fg-subtle'}
+              className={TONE_CLASS[version.tone]}
               data-testid={version.testid}
             >
               {version.text}
@@ -272,9 +284,14 @@ function CommunityRow(props: {
               </span>
             )}
           </span>
-          {/* 뒤처졌을 때만 선다. 정상일 때 매번 한 줄을 더 쓰면 목록이 읽기 어려워진다. */}
+          {/* 사정이 있을 때만 선다. 정상일 때 매번 한 줄을 더 쓰면 목록이 읽기 어려워진다.
+              **고장일 때는 이 줄이 할 일을 적는 자리**라 흐리게 두지 않는다. */}
           {version.detail && (
-            <span className="mt-0.5 block text-meta text-fg-muted">{version.detail}</span>
+            <span
+              className={`mt-0.5 block text-meta ${version.tone === 'danger' ? 'text-danger' : 'text-fg-muted'}`}
+            >
+              {version.detail}
+            </span>
           )}
         </span>
         {!active && (
