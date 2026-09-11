@@ -2,6 +2,8 @@ import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+
+import { pinOldPath } from './helpers/oldPath.js';
 import { HARNESS_ENV_DENYLIST, assertHarnessContract, buildTurnCommand, preassignsSessionId, writeMcpConfigOnce, writePromptFile, writeSystemPromptFile } from '../src/turn.js';
 
 // murmurUrl 은 **서버 베이스 URL이다, MCP 엔드포인트가 아니다** — main.ts::loadConfig 가
@@ -136,6 +138,8 @@ describe('buildTurnCommand — claude', () => {
 });
 
 describe('buildTurnCommand — codex', () => {
+  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
+  pinOldPath();
   it('첫 턴은 sessionId 없이도 조립된다 — codex 는 id 를 사전 할당할 수 없다', () => {
     const p = buildTurnCommand({ ...base, harness: 'codex', mode: 'mention', sessionId: null, isFirstTurn: true });
     expect(p.command).toBe('codex');
@@ -619,6 +623,8 @@ describe('인증 주입 env 를 자식에게 넘기지 않는다', () => {
 });
 
 describe('실행 모델 교체 — 멘션 턴도 TUI 다 (2026-09-08)', () => {
+  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
+  pinOldPath();
   const SESSION = '77777777-7777-4777-8777-777777777777';
 
   it('멘션 턴에 -p 가 없다 — 붙이면 프롬프트가 stdin 파일로 가고 사람이 칠 수 없다', () => {

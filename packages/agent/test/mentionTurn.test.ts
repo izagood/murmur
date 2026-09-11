@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+
+import { pinOldPath } from './helpers/oldPath.js';
 import type { AgentHarness, AgentView, MessageRow } from '@murmur/shared';
 import { mentionAnchor, runMentionTurn, syncSkills, type MentionTurnDeps, type MentionTurnMurmur, type RunTurn } from '../src/mentionTurn.js';
 import { BODY_LIMIT, NO_REPLY_NOTICE } from '../src/prompt.js';
@@ -691,7 +693,10 @@ describe('runMentionTurn', () => {
     expect(rec!.turnsRun).toBe(1); // 세션은 리셋됐지만, 이번 턴 자체는 돌았다
 
     const secondPlanArgs = plans[1]!.args;
-    expect(secondPlanArgs[0]).toBe('exec'); // codex 첫 턴 — resume 이 아니다
+    // **재는 것은 "resume 이 아니다"** 다. `args[0] === 'exec'` 로 재면 실행 방식에
+    // 묶인다 — codex 가 TUI 로 올라가면 첫 토큰이 `-c` 가 되고, 뜻은 그대로인데 테스트만
+    // 깨진다. 두 경로에서 같은 뜻을 재려면 resume 의 부재로 재야 한다.
+    expect(secondPlanArgs).not.toContain('resume');
     expect(secondPlanArgs).not.toContain('resume');
     expect(secondPlanArgs.join(' ')).not.toContain(String(claudeSessionId));
   });
@@ -1166,7 +1171,8 @@ describe('runMentionTurn', () => {
     await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: null, mentionId: MENTION });
 
     expect(plans).toHaveLength(2);
-    expect(plans[1]!.args[0]).toBe('exec'); // resume 이 아니다 — 이어받을 세션 id 가 없다
+    // resume 이 아니다 — 이어받을 세션 id 가 없다(위와 같은 이유로 실행 방식에 묶지 않는다).
+    expect(plans[1]!.args).not.toContain('resume');
     expect(plans[1]!.args).not.toContain('resume');
   });
 
@@ -2580,6 +2586,8 @@ describe('하네스 API 에러를 세션 JSONL 에서 함께 싣는다 (2026-09-
 });
 
 describe('실행 모델 교체 — 멘션 턴이 TUI 로 뜬다 (2026-09-08)', () => {
+  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
+  pinOldPath();
   it('claude 멘션 턴은 stdinFile 없이 뜨고 프롬프트는 주입으로 간다 — 사람이 칠 수 있다', async () => {
     const fake = new FakeMurmur(defOf());
     fake.seedFrom('human-1', '@forge 안녕하세요');
@@ -2829,6 +2837,8 @@ describe('턴의 끝 — 발화 + 관찰자 없음 (2026-09-08)', () => {
 });
 
 describe('타임아웃이 무발화 경과를 잰다 (2026-09-08)', () => {
+  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
+  pinOldPath();
   it('답 없이 한도를 넘기면 회수하고 실패로 끝난다', async () => {
     const fake = new FakeMurmur(defOf());
     fake.seedFrom('human-1', '@forge 안녕');

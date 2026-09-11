@@ -19,7 +19,7 @@ import type { AgentHarness } from '@murmur/shared';
 import { CLAUDE_CODE_ADAPTER } from './claudeCode.js';
 import { CODEX_ADAPTER } from './codex.js';
 import { OPENCODE_ADAPTER } from './opencode.js';
-import type { HarnessAdapter } from './contract.js';
+import type { ExecutionModel, HarnessAdapter } from './contract.js';
 
 export type { HarnessAdapter, ExecutionModel, TrustLedger, TranscriptSource, AccountAxis } from './contract.js';
 export { GATE_PATTERN } from './gate.js';
@@ -76,8 +76,30 @@ export function readsSessionTranscript(harness: AgentHarness): boolean {
  * 바꾸는 날 고칠 곳은 어댑터 표 한 줄이고, 그때 이 함수는 안 고친다.
  */
 export function usesTuiForMention(harness: AgentHarness): boolean {
-  if (!harnessAdaptersEnabled()) return harness === 'claude-code';
-  return adapterFor(harness).executionModel.mention === 'tui';
+  return executionModelFor(harness, 'mention') === 'tui';
+}
+
+/**
+ * **이 하네스를 이 모드에서 어떤 실행 방식으로 띄우는가.**
+ *
+ * `usesTuiForMention` 이 이것의 멘션 전용 얼굴이다. 갈라 둔 이유는 **argv 의 모양이 모드가
+ * 아니라 실행 방식을 따라야** 하기 때문이다 — `turn.ts` 의 codex 프리셋이 그것을 읽는다.
+ * 같은 codex 가 `codex exec` 로 뜰 때와 `codex`(TUI)로 뜰 때 **받는 플래그 집합이 다르다**
+ * (실측, codex-cli 0.153.0): `--skip-git-repo-check` 와 `--ignore-user-config` 는 `exec`
+ * 계열에만 있고 TUI(`codex`·`codex resume`)에는 **없다**. 모드로 판단하면 멘션 턴을 TUI 로
+ * 올리는 순간 그 플래그들이 그대로 붙어 `unexpected argument` 로 죽는다.
+ *
+ * 스위치가 꺼져 있으면 **옛 답을 그대로** 준다(claude 는 양쪽 TUI, codex 는 멘션만 exec).
+ * 켜면 표를 읽는다 — 그리고 표에서 codex 의 멘션이 이제 `'tui'` 다. **이것이 이 이설의
+ * "추가" 다**: 새 경로는 claude 에 대해 옛 경로와 같고, codex 에 대해 TUI 로 올라간다.
+ */
+export function executionModelFor(harness: AgentHarness, mode: 'mention' | 'interactive'): ExecutionModel {
+  if (!harnessAdaptersEnabled()) {
+    // 옛 경로의 사실을 그대로 옮긴 것이다: claude 는 두 모드 다 TUI, 그 밖은 인터랙티브만 TUI.
+    if (harness === 'claude-code') return 'tui';
+    return mode === 'interactive' ? 'tui' : 'exec';
+  }
+  return adapterFor(harness).executionModel[mode];
 }
 
 /**
