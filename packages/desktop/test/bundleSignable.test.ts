@@ -328,7 +328,7 @@ describe('entitlements — 본체에만, 필요한 것만', () => {
     for (const script of [SIGN_SCRIPT, NOTARIZE_SCRIPT]) {
       const source = readFileSync(script, 'utf8');
       expect(source, `${script}: 기본 경로가 사라졌다`)
-        .toMatch(/'target',\s*'release',\s*'bundle',\s*'macos',\s*'murmur\.app'/);
+        .toMatch(/'target',\s*'release',\s*'bundle',\s*'macos',\s*'Harkroom\.app'/);
     }
   });
 

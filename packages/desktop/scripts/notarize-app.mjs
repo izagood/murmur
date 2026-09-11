@@ -101,7 +101,7 @@ function notaryArgs() {
     return { args: ['--key', key, '--key-id', keyId, '--issuer', issuer], how: 'API 키(환경변수)' };
   }
 
-  const profile = process.env.MURMUR_NOTARY_PROFILE ?? 'murmur';
+  const profile = process.env.MURMUR_NOTARY_PROFILE ?? 'harkroom';
   return { args: ['--keychain-profile', profile], how: `키체인 프로필 ${profile}` };
 }
 
