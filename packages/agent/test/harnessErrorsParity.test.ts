@@ -50,9 +50,12 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+  // **끔을 `delete` 로 표현하지 않는다(2026-09-11 전환).** 기본값이 켜짐이 된 뒤로
+  // 값이 없는 것은 **켜짐**이다 — 지우기로 끄려 하면 두 경로를 비교한다고 믿으면서
+  // 실은 같은 경로를 두 번 재게 된다. 끄는 것은 이제 `'0'` 이다.
 function setFlag(enabled: boolean): void {
   if (enabled) process.env.MURMUR_HARNESS_ADAPTERS = '1';
-  else delete process.env.MURMUR_HARNESS_ADAPTERS;
+  else process.env.MURMUR_HARNESS_ADAPTERS = '0';
 }
 
 /** 네 함수의 답을 한 번에 모은다 — 하나만 맞추면 나머지가 갈려도 초록이다. */
