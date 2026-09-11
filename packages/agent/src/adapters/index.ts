@@ -150,16 +150,30 @@ export function adapterFor(harness: AgentHarness): HarnessAdapter {
 }
 
 /**
- * 러너가 **어댑터 표를 읽어 동작할 것인가**. 기본값은 **꺼짐**이다.
+ * 러너가 **어댑터 표를 읽어 동작할 것인가**. 기본값은 **켜짐**이다(2026-09-11 전환).
  *
- * 켜는 방법은 `MURMUR_HARNESS_ADAPTERS=1`(러너 env). 데몬이 러너 env 를 통째로 상속시키므로
- * 운영자가 데몬 환경에 넣으면 그 기계의 모든 러너가 새 경로로 돈다 — 한 기계에서 먼저
- * 켜 보고 넘어가는 것이 이 설계가 의도한 검증 순서다.
+ * ## 전환한 근거
  *
- * `'1'`·`'true'` 만 켜짐으로 읽는다. 오타로 켜지지 않게 하려는 것이다 — 이 스위치가
- * 실수로 켜지면 claude 경로가 통째로 바뀐다.
+ * 켜고 끄는 것이 **동작을 바꾸지 않는다**는 것을 증명한 뒤에 켰다:
+ * - `test/turnFactsParity.test.ts` · `workspaceTrustParity` · `harnessErrorsParity` 가
+ *   양쪽을 **실제로 돌려** 답을 맞춘다(값 비교가 아니라 행동 — 파일 바이트·반환값·argv).
+ * - CI 가 에이전트 스위트를 **양쪽에서** 돈다. 실측(2026-09-11): 두 모드가 762 passed 로
+ *   같았고 실패 집합도 동일했다.
+ * - codex 의 실행 방식(headless → TUI)은 이 스위치와 **무관하게** 먼저 올렸다
+ *   (`executionModelFor` 주석의 ①). 그래서 이 전환에는 실행 방식 변화가 섞여 있지 않다.
+ *
+ * ## 끄는 길을 남긴다 — 아직 옛 분기가 살아 있다
+ *
+ * `MURMUR_HARNESS_ADAPTERS=0`(또는 `false`)로 **옛 경로로 되돌릴 수 있다.** 러너 env 한 줄이
+ * 곧 롤백이므로, 프로덕션에서 무엇이 어긋나면 릴리스를 되돌리지 않고 그 러너만 내릴 수 있다.
+ *
+ * **다음 릴리스에서 이 함수와 옛 분기를 함께 지운다.** 그때는 표가 유일한 경로가 되고,
+ * CI 의 "옛 경로" 단계도 함께 사라진다. 그 삭제까지가 이설의 끝이다.
+ *
+ * 값 판정은 **끄는 쪽만** 명시적으로 본다. 켜는 것이 기본이므로 오타(`MURMUR_HARNESS_ADAPTERS=off`)
+ * 로 **꺼지지 않는** 것이 안전한 방향이다 — 실수로 옛 경로로 떨어지면 그 사실이 조용하다.
  */
 export function harnessAdaptersEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.MURMUR_HARNESS_ADAPTERS;
-  return raw === '1' || raw === 'true';
+  return !(raw === '0' || raw === 'false');
 }

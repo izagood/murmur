@@ -41,6 +41,9 @@ afterEach(async () => {
  * 파일 하나를 지목해 읽지 않는 이유: 그러면 "새 경로가 **다른 파일에도** 뭔가 적는다"를
  * 못 잡는다. 무엇이 생겼는지까지 같아야 같은 것이다.
  */
+  // **끔을 `delete` 로 표현하지 않는다(2026-09-11 전환).** 기본값이 켜짐이 된 뒤로
+  // 값이 없는 것은 **켜짐**이다 — 지우기로 끄려 하면 두 경로를 비교한다고 믿으면서
+  // 실은 같은 경로를 두 번 재게 된다. 끄는 것은 이제 `'0'` 이다.
 async function runOnce(harness: AgentHarness, enabled: boolean): Promise<Record<string, string>> {
   const base = join(root, `${harness}-${enabled ? 'new' : 'old'}`);
   const configDir = join(base, 'config');
@@ -49,7 +52,7 @@ async function runOnce(harness: AgentHarness, enabled: boolean): Promise<Record<
   await mkdir(workspaceDir, { recursive: true });
 
   if (enabled) process.env.MURMUR_HARNESS_ADAPTERS = '1';
-  else delete process.env.MURMUR_HARNESS_ADAPTERS;
+  else process.env.MURMUR_HARNESS_ADAPTERS = '0';
 
   await ensureWorkspaceTrusted({ harness, workspaceDir, claudeConfigDir: configDir, codexHome });
 
