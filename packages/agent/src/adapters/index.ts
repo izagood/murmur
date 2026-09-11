@@ -94,11 +94,21 @@ export function usesTuiForMention(harness: AgentHarness): boolean {
  * "추가" 다**: 새 경로는 claude 에 대해 옛 경로와 같고, codex 에 대해 TUI 로 올라간다.
  */
 export function executionModelFor(harness: AgentHarness, mode: 'mention' | 'interactive'): ExecutionModel {
-  if (!harnessAdaptersEnabled()) {
-    // 옛 경로의 사실을 그대로 옮긴 것이다: claude 는 두 모드 다 TUI, 그 밖은 인터랙티브만 TUI.
-    if (harness === 'claude-code') return 'tui';
-    return mode === 'interactive' ? 'tui' : 'exec';
-  }
+  /**
+   * **스위치를 보지 않는다(2026-09-11, jaebin 의 순서).**
+   *
+   * 두 가지를 한 커밋에 겹치지 않기 위해서다:
+   *   ① 기존 경로에서 codex 를 headless → TUI 로 올린다  ← 이 커밋
+   *   ② 그다음 기존 경로 → 새 경로로 옮긴다(순수 리팩터)
+   *
+   * 앞 판본은 codex TUI 를 **새 경로에만** 넣었다. 그러면 스위치를 켜는 순간 *경로*와
+   * *실행 방식*이 **동시에** 바뀌고, codex 턴이 깨졌을 때 어느 쪽 탓인지 가릴 수 없다.
+   * 실행 방식을 스위치 밖으로 빼면 스위치는 **아무 동작도 바꾸지 않는 리팩터**가 되고,
+   * 그 사실을 패리티 테스트가 증명할 수 있다.
+   *
+   * 그래서 이 함수에는 옛/새 갈림이 **없다.** 실행 방식은 하나뿐이고 표가 그것을 말한다 —
+   * 다른 사실들(계정 풀·기록 판정·신뢰 장부)은 여전히 스위치 뒤에서 갈린다.
+   */
   return adapterFor(harness).executionModel[mode];
 }
 

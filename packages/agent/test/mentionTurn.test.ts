@@ -11,7 +11,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
-import { pinOldPath } from './helpers/oldPath.js';
 import type { AgentHarness, AgentView, MessageRow } from '@murmur/shared';
 import { mentionAnchor, runMentionTurn, syncSkills, type MentionTurnDeps, type MentionTurnMurmur, type RunTurn } from '../src/mentionTurn.js';
 import { BODY_LIMIT, NO_REPLY_NOTICE } from '../src/prompt.js';
@@ -2586,8 +2585,6 @@ describe('하네스 API 에러를 세션 JSONL 에서 함께 싣는다 (2026-09-
 });
 
 describe('실행 모델 교체 — 멘션 턴이 TUI 로 뜬다 (2026-09-08)', () => {
-  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
-  pinOldPath();
   it('claude 멘션 턴은 stdinFile 없이 뜨고 프롬프트는 주입으로 간다 — 사람이 칠 수 있다', async () => {
     const fake = new FakeMurmur(defOf());
     fake.seedFrom('human-1', '@forge 안녕하세요');
@@ -2608,7 +2605,7 @@ describe('실행 모델 교체 — 멘션 턴이 TUI 로 뜬다 (2026-09-08)', (
     expect(plans[0]!.args.join(' ')).not.toContain('안녕하세요');
   });
 
-  it('codex 멘션 턴은 그대로 stdinFile 이다 — P5 전까지 두 세계가 함께 산다', async () => {
+  it('codex 멘션 턴도 주입이다 — stdinFile 이 없고 사람이 칠 수 있다 (2026-09-11)', async () => {
     const fake = new FakeMurmur(defOf({ harness: 'codex' }));
     fake.seedFrom('human-1', '@forge 안녕하세요');
     const { deps, plans, runTurn, turnOpts } = await makeDeps(fake);
@@ -2620,9 +2617,14 @@ describe('실행 모델 교체 — 멘션 턴이 TUI 로 뜬다 (2026-09-08)', (
 
     await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: null, mentionId: MENTION });
 
-    expect(plans[0]!.stdinFile).not.toBeNull();
-    expect(acceptsPtyInput(plans[0]!)).toBe(false);
-    expect(injected).toBeUndefined();
+    // **뒤집힌 단언이다.** 앞 판본은 "codex 는 그대로 stdinFile" 을 못 박고 있었고, 그
+    // 근거가 "P5 전까지" 였다. 전환 기준이 **codex 가 TUI 로 도는 것**이므로 그 P5 가 왔다.
+    //
+    // 세 줄이 한 사실의 세 얼굴이다: stdinFile 이 없으면 `sh -c '… < 파일'` 래핑이 없고,
+    // 그러면 fd 0 이 PTY 이므로 **사람이 그 턴에 칠 수 있고**, 프롬프트는 주입으로 들어간다.
+    expect(plans[0]!.stdinFile).toBeNull();
+    expect(acceptsPtyInput(plans[0]!)).toBe(true);
+    expect(injected).toContain('안녕하세요');
   });
 });
 
@@ -2837,8 +2839,6 @@ describe('턴의 끝 — 발화 + 관찰자 없음 (2026-09-08)', () => {
 });
 
 describe('타임아웃이 무발화 경과를 잰다 (2026-09-08)', () => {
-  // 이 묶음은 **옛 경로**를 못 박는다(codex = exec). 근거: test/helpers/oldPath.ts
-  pinOldPath();
   it('답 없이 한도를 넘기면 회수하고 실패로 끝난다', async () => {
     const fake = new FakeMurmur(defOf());
     fake.seedFrom('human-1', '@forge 안녕');
@@ -2899,14 +2899,18 @@ describe('타임아웃이 무발화 경과를 잰다 (2026-09-08)', () => {
     expect((turnOpts[0] as { timeoutMs?: number }).timeoutMs).toBe(0);
   });
 
-  it('codex 는 그대로 PTY 시계를 쓴다 — exec 은 프로세스 수명과 턴이 같은 사실이다', async () => {
+  it('codex 도 무발화로 잰다 — TUI 는 답하고도 안 죽는다 (2026-09-11)', async () => {
+    // **뒤집힌 단언이다.** exec 시절에는 "프로세스 수명"과 "턴"이 같은 사실이라 PTY 시계를
+    // 그대로 썼다(`timeoutMs: 12_345`). TUI 는 답하고도 살아 있으므로 프로세스 수명으로
+    // 재면 정상 턴이 시간 한도에 걸린다 — 그래서 `timeoutMs: 0`(무기한)으로 띄우고
+    // 한도는 러너가 **무발화 경과**로 잰다. claude 가 이미 그렇게 돈다.
     const fake = new FakeMurmur(defOf({ harness: 'codex' }));
     fake.seedFrom('human-1', '@forge 안녕');
     const { deps, turnOpts, runTurn } = await makeDeps(fake, { turnTimeoutMs: 12_345 });
     runTurn.script = async () => ({ exitCode: 0, timedOut: false, tail: '' });
 
     await runMentionTurn(deps, { channelId: CHANNEL, threadRootId: null, mentionId: MENTION });
-    expect((turnOpts[0] as { timeoutMs?: number }).timeoutMs).toBe(12_345);
+    expect((turnOpts[0] as { timeoutMs?: number }).timeoutMs).toBe(0);
   });
 });
 
