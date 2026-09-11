@@ -43,7 +43,7 @@ function makeAgent(overrides: Partial<AgentView> = {}): AgentView {
     ownerAccountId: null,
     disabled: false,
     instructions: '',
-    harness: 'claude',
+    harness: 'claude-code',
     model: null,
     effort: null,
     workingDir: null,
@@ -103,7 +103,7 @@ describe('AgentsSettings — 종료 요청 수령 반영(#428)', () => {
     const requestAgentStop = vi.fn(async () => requested);
     const listPats = vi.fn(async () => []);
     const agentMemory = vi.fn(async () => []);
-    const agentDefaults = vi.fn(async () => ({ harness: 'claude', model: null, effort: null }));
+    const agentDefaults = vi.fn(async () => ({ harness: 'claude-code', model: null, effort: null }));
 
     setController({
       listAgents,
@@ -180,7 +180,7 @@ describe('AgentsSettings — 러너 실행·중지 토글(#427, #493)', () => {
       undoAgentStopRequest,
       listPats: vi.fn(async () => []),
       agentMemory: vi.fn(async () => []),
-      agentDefaults: vi.fn(async () => ({ harness: 'claude', model: null, effort: null })),
+      agentDefaults: vi.fn(async () => ({ harness: 'claude-code', model: null, effort: null })),
       ...extra,
     } as unknown as Controller);
 
@@ -314,7 +314,7 @@ describe('AgentsSettings — 에이전트별 계정 풀', () => {
       listAgents: vi.fn(async () => [AGENT]),
       listPats: vi.fn(async () => []),
       agentMemory: vi.fn(async () => ({ profile: null, entries: [] })),
-      agentDefaults: vi.fn(async () => ({ harness: 'claude', model: null, effort: null })),
+      agentDefaults: vi.fn(async () => ({ harness: 'claude-code', model: null, effort: null })),
     } as unknown as Controller);
   });
 
@@ -405,6 +405,16 @@ describe('AgentsSettings — 에이전트별 계정 풀', () => {
     await screen.findByLabelText(/agent harness/i);
     expect(screen.queryByLabelText(/account pool/i)).toBeNull();
   });
+
+  /**
+   * **화면이 거짓말하던 자리**(2026-09-11). 앞 판본은 하네스를 보지 않고 풀 선택을 그렸다 —
+   * codex 에이전트에도 claude 풀이 떴고, 사람이 고른 값을 러너는 그대로 버렸다
+   * (`mentionTurn` 이 claude 턴에만 계정을 싣는다). 배정했다고 믿는 사람과 아무 일도 안
+   * 하는 러너 사이에 아무 신호가 없었다.
+   *
+   * 감추기만 하면 사람이 원인을 지어내므로 **이유를 한 줄 그린다** — 조회 실패를 감추지
+   * 않는 위 테스트와 같은 규율이다.
+   */
 });
 
 /**
@@ -442,7 +452,7 @@ describe('AgentsSettings — 만들 때 계정 풀을 고른다', () => {
       listAgents: vi.fn(async () => []),
       listPats: vi.fn(async () => []),
       agentMemory: vi.fn(async () => ({ profile: null, entries: [] })),
-      agentDefaults: vi.fn(async () => ({ harness: 'claude', model: null, effort: null })),
+      agentDefaults: vi.fn(async () => ({ harness: 'claude-code', model: null, effort: null })),
       createAgent,
     } as unknown as Controller);
   });
@@ -505,7 +515,7 @@ describe('AgentsSettings — 만들 때 계정 풀을 고른다', () => {
       listAgents: vi.fn(async () => []),
       listPats: vi.fn(async () => []),
       agentMemory: vi.fn(async () => ({ profile: null, entries: [] })),
-      agentDefaults: vi.fn(async () => ({ harness: 'claude', model: null, effort: null })),
+      agentDefaults: vi.fn(async () => ({ harness: 'claude-code', model: null, effort: null })),
       createAgent,
     } as unknown as Controller);
 
