@@ -43,7 +43,10 @@ import { looksReadyForPrompt, runPtyTurn, type PtyControls } from '../src/pty.js
 import { ensureWorkspaceTrusted } from '../src/workspaceTrust.js';
 import type { TurnPlan } from '../src/turn.js';
 
-/** 부팅 상한. opencode 는 실측에서 30초 근처였다 — 넉넉히 두고 **실제로 걸린 시간을 보고한다.** */
+/**
+ * 부팅 상한. 넉넉히 두고 **실제로 걸린 시간을 보고한다** — 상한은 "실패로 접는 선"이고,
+ * 사람이 알고 싶은 것은 걸린 시간이다. 실측(이 스크립트로): claude 0.3초, opencode 2.5초.
+ */
 const READY_TIMEOUT_MS = 90_000;
 
 /** 화면을 사람이 읽게 만든다. 판정에는 안 쓴다 — 판정은 `looksReadyForPrompt` 가 한다. */
